@@ -188,20 +188,3 @@ Ask the model to create a Markdown or text file in the selected workspace. Use *
 
 The previews use a 200-column × 56-row terminal at 2560 × 1440 pixels. Your font size and display scaling change the visible proportions. [All preview pictures](assets/).
 
-## Check a real cluster
-
-Start with an existing small GGUF model. Inspect the request before you allocate a GPU:
-
-```bash
-./hpc-llm --check
-./hpc-llm doctor
-./hpc-llm smoke --model /absolute/path/small-model.gguf
-```
-
-The smoke command uses the selected profile and a 20-minute time limit. It prints the batch request without submitting it. After you check the resources, repeat with `--execute`:
-
-```bash
-./hpc-llm smoke --model /absolute/path/small-model.gguf --execute
-```
-
-Check a short reply, GPU offload diagnostics, detach and resume, a context change, and a synthetic file attachment. Test web access and vision separately if needed. Stop the session after the check. Cloud fixtures do not validate WEHI permissions, GPU inference, VRAM estimate accuracy, or terminal behavior.
