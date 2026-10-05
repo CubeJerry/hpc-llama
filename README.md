@@ -13,7 +13,7 @@ Run these commands on your cluster's **Linux login node**. Keep the application 
 ```bash
 git clone https://github.com/CubeJerry/hpc-llama.git
 cd hpc-llama
-bash install.sh --profile wehi
+bash install.sh --profile NAME
 ./hpc-llm --check
 ./hpc-llm
 ```
@@ -24,7 +24,7 @@ The installer supplies private Python, application libraries, llama.cpp, and CUD
 
 **Host requirements:** Linux x86_64, Bash, `curl`, `tar`, `sha256sum`, and scheduler commands. The default CUDA runtime requires glibc 2.28 or later and a compatible NVIDIA driver on the compute node. Git is needed for the clone command. A macOS or Windows terminal can connect to the cluster through SSH; installation runs on the cluster.
 
-Choose another starting profile if needed:
+Some blank profiles ```.json``` files are provided:
 
 ```bash
 bash install.sh --profile generic   # Slurm
