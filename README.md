@@ -133,10 +133,9 @@ In **Add model**, select the registered model as the update target. Expand **Vis
 
 ```bash
 ./hpc-llm models install --model /absolute/path/model.gguf \
-  --projector auto --mtp auto --dry-run
+  --projector auto --mtp auto
 ```
-
-Remove `--dry-run` after you review the plan. This update downloads companions only. It preserves the main weights, model identity, and saved settings. For a manually registered model, also supply its original `OWNER/REPOSITORY`. Use exact companion filenames if `auto` is ambiguous. The main weights must match that repository.
+This update downloads companions only. It preserves the main weights, model identity, and saved settings. For a manually registered model, also supply its original `OWNER/REPOSITORY`. Use exact companion filenames if `auto` is ambiguous. The main weights must match that repository.
 
 ![Model companion installation options](assets/model-companions.png)
 
@@ -156,11 +155,6 @@ Launch changes apply to that allocation only. You do not need to edit or reinsta
 
 **Detach** closes the terminal view and leaves the allocation running. It continues to use allocated GPU time. Open `./hpc-llm` and select **Resume** to reconnect to a running session. **Restore saved chats** starts a new allocation for a saved session. **Stop GPU session** releases the allocation.
 
-```bash
-./hpc-llm sessions
-./hpc-llm attach
-./hpc-llm stop SESSION_ID
-```
 
 ## Use the chat interface
 
@@ -211,17 +205,3 @@ The smoke command uses the selected profile and a 20-minute time limit. It print
 ```
 
 Check a short reply, GPU offload diagnostics, detach and resume, a context change, and a synthetic file attachment. Test web access and vision separately if needed. Stop the session after the check. Cloud fixtures do not validate WEHI permissions, GPU inference, VRAM estimate accuracy, or terminal behavior.
-
-## Update and retain your data
-
-Stop active GPU sessions before updating:
-
-```bash
-git pull --ff-only
-bash install.sh
-./hpc-llm
-```
-
-Reinstallation preserves the selected profile and cache unless you explicitly change them. Keep `state/` for profiles, model registrations, and saved chats. Keep your workspace for inputs and outputs.
-
-If scratch cleanup deletes only model weights, run `models install` again. Restore the projector and MTP head too, if used. You do not need to reinstall the application or recreate the profile. If cleanup deletes the application or `state/`, those components must also be restored.
