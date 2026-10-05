@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+APP_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
+  echo 'Run bash install.sh --profile wehi first.' >&2
+  exit 1
+fi
+export HPC_LLM_HOME="${HPC_LLM_HOME:-$APP_DIR/state}"
+export HPC_LLM_ROOT="$APP_DIR"
+exec "$APP_DIR/.venv/bin/python" -m hpc_llm.cli "$@"

@@ -1,0 +1,35 @@
+{
+  "modules": [],
+  "module_init": "",
+  "runtime": "",
+  "model_cache": "",
+  "name": "generic",
+  "description": "Generic Slurm template. Set the partition and GPU resource names used by your cluster.",
+  "scheduler": "slurm",
+  "resources": {
+    "partition": "gpu",
+    "gpu_type": "",
+    "gpu_count": 1,
+    "cpus": 4,
+    "memory_gb": 16,
+    "walltime": "01:00:00"
+  },
+  "resource_presets": {
+    "GPU \u00b7 1 hour": {
+      "partition": "gpu",
+      "gpu_type": "",
+      "gpu_count": 1,
+      "cpus": 4,
+      "memory_gb": 16,
+      "walltime": "01:00:00"
+    },
+    "GPU \u00b7 4 hours": {
+      "partition": "gpu",
+      "gpu_type": "",
+      "gpu_count": 1,
+      "cpus": 4,
+      "memory_gb": 16,
+      "walltime": "04:00:00"
+    }
+  }
+}

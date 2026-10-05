@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hpc-llm"
+version = "0.1.0"
+description = "Persistent Slurm/PBS LLM sessions with a simple terminal interface"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.12,<4", "textual>=6,<9", "pydantic>=2.11,<3", "pypdf>=6,<7", "python-docx>=1.2,<2", "openpyxl>=3.1.5,<4", "pillow>=11,<13", "beautifulsoup4>=4.13,<5", "ddgs==9.16.0"]
+
+[project.scripts]
+hpc-llm = "hpc_llm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

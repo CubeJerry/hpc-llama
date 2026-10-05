@@ -1,0 +1,35 @@
+{
+  "modules": [],
+  "module_init": "",
+  "runtime": "",
+  "model_cache": "/vast/scratch/users/$USER/llama_cache",
+  "name": "wehi",
+  "description": "WEHI Slurm GPU allocation. Edit partition, account, GPU type and time to match your access; bundled presets are editable starting points.",
+  "scheduler": "slurm",
+  "resources": {
+    "partition": "gpuq",
+    "gpu_type": "A30",
+    "gpu_count": 1,
+    "cpus": 4,
+    "memory_gb": 16,
+    "walltime": "01:00:00"
+  },
+  "resource_presets": {
+    "A30 \u00b7 1 hour": {
+      "partition": "gpuq",
+      "gpu_type": "A30",
+      "gpu_count": 1,
+      "cpus": 4,
+      "memory_gb": 16,
+      "walltime": "01:00:00"
+    },
+    "A100 \u00b7 4 hours": {
+      "partition": "gpuq",
+      "gpu_type": "A100",
+      "gpu_count": 1,
+      "cpus": 4,
+      "memory_gb": 32,
+      "walltime": "04:00:00"
+    }
+  }
+}

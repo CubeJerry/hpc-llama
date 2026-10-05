@@ -1,0 +1,589 @@
+{
+  "version": "11351",
+  "backend": "cuda12",
+  "platform": "linux-64",
+  "glibc_minimum": "2.28",
+  "source": "https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md",
+  "channel": "https://conda.anaconda.org/conda-forge",
+  "packages": [
+    {
+      "name": "cuda-version-12.9-h4f385c5_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/noarch/cuda-version-12.9-h4f385c5_3.conda",
+      "sha256": "5f5f428031933f117ff9f7fcc650e6ea1b3fef5936cf84aa24af79167513b656",
+      "size": 21578,
+      "package": "cuda-version",
+      "version": "12.9",
+      "build": "h4f385c5_3",
+      "depends": []
+    },
+    {
+      "name": "ca-certificates-2026.7.22-hbd8a1cb_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda",
+      "sha256": "0a0544cf95f64394fe4959286f5c71f5444ad58feb0602e53becb27448d24da6",
+      "size": 131780,
+      "package": "ca-certificates",
+      "version": "2026.7.22",
+      "build": "hbd8a1cb_0",
+      "depends": [
+        "__unix"
+      ]
+    },
+    {
+      "name": "cuda-cudart_linux-64-12.9.79-h3f2d84a_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/noarch/cuda-cudart_linux-64-12.9.79-h3f2d84a_0.conda",
+      "sha256": "6cde0ace2b995b49d0db2eefb7bc30bf00ffc06bb98ef7113632dec8f8907475",
+      "size": 197249,
+      "package": "cuda-cudart_linux-64",
+      "version": "12.9.79",
+      "build": "h3f2d84a_0",
+      "depends": [
+        "cuda-version >=12.9,<12.10.0a0"
+      ]
+    },
+    {
+      "name": "libzlib-1.3.2-h25fd6f3_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.3.2-h25fd6f3_3.conda",
+      "sha256": "eb8a0db0aa570124f7d2a93d7c7f596e3390df5e047818d873baad32985fc736",
+      "size": 63713,
+      "package": "libzlib",
+      "version": "1.3.2",
+      "build": "h25fd6f3_3",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0"
+      ]
+    },
+    {
+      "name": "libgomp-16.2.0-he0feb66_7.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libgomp-16.2.0-he0feb66_7.conda",
+      "sha256": "92a0bb350c7be6a4eedcb4e111c60aefd176018e6b1c009a6e025dbe9bbcd758",
+      "size": 640566,
+      "package": "libgomp",
+      "version": "16.2.0",
+      "build": "he0feb66_7",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0"
+      ]
+    },
+    {
+      "name": "cuda-crt-tools-12.9.86-ha770c72_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/cuda-crt-tools-12.9.86-ha770c72_2.conda",
+      "sha256": "2da9964591af14ba11b2379bed01d56e7185260ee0998d1a939add7fb752db45",
+      "size": 29138,
+      "package": "cuda-crt-tools",
+      "version": "12.9.86",
+      "build": "ha770c72_2",
+      "depends": [
+        "cuda-version >=12.9,<12.10.0a0"
+      ]
+    },
+    {
+      "name": "zstd-1.5.7-hb78ec9c_7.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_7.conda",
+      "sha256": "47d682b9f6d6ec9eb1a6e6c3e75ea6273e899e78fb7fc59f81d39745009fbc60",
+      "size": 601301,
+      "package": "zstd",
+      "version": "1.5.7",
+      "build": "hb78ec9c_7",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libzlib >=1.3.2,<2.0a0"
+      ]
+    },
+    {
+      "name": "_openmp_mutex-4.5-20_gnu.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda",
+      "sha256": "1dd3fffd892081df9726d7eb7e0dea6198962ba775bd88842135a4ddb4deb3c9",
+      "size": 28948,
+      "package": "_openmp_mutex",
+      "version": "4.5",
+      "build": "20_gnu",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgomp >=7.5.0"
+      ]
+    },
+    {
+      "name": "libgcc-16.2.0-ha9f2e26_7.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libgcc-16.2.0-ha9f2e26_7.conda",
+      "sha256": "e031634c3a928f9594eba868bc46ef5230d6571a364a0c63215b06c4563bfcea",
+      "size": 1058444,
+      "package": "libgcc",
+      "version": "16.2.0",
+      "build": "ha9f2e26_7",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "_openmp_mutex >=4.5"
+      ]
+    },
+    {
+      "name": "xorg-libxau-1.0.12-h7cc23a3_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libxau-1.0.12-h7cc23a3_2.conda",
+      "sha256": "3ec065b94554dc48a4ca582a960a5484bc166b26e83ce0954653e08d17e8bd53",
+      "size": 18793,
+      "package": "xorg-libxau",
+      "version": "1.0.12",
+      "build": "h7cc23a3_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15"
+      ]
+    },
+    {
+      "name": "xorg-libxdmcp-1.1.5-h7cc23a3_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libxdmcp-1.1.5-h7cc23a3_2.conda",
+      "sha256": "8a095df9bc1d2e50f2504ce8858a047ae29ea634aad6cc0b43298c63361da6d9",
+      "size": 22606,
+      "package": "xorg-libxdmcp",
+      "version": "1.1.5",
+      "build": "h7cc23a3_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15"
+      ]
+    },
+    {
+      "name": "ncurses-6.6-hdb14827_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.6-hdb14827_1.conda",
+      "sha256": "5d46557214ed184381dafe835b7c94a474a1c3b307a08a250b1ea4779b44ffb3",
+      "size": 911196,
+      "package": "ncurses",
+      "version": "6.6",
+      "build": "hdb14827_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=14"
+      ]
+    },
+    {
+      "name": "c-ares-1.34.8-hebe6cf0_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/c-ares-1.34.8-hebe6cf0_2.conda",
+      "sha256": "9c37cc233238adf366ea75b0e845662a5be07ceadf62e458183516369340274b",
+      "size": 228700,
+      "package": "c-ares",
+      "version": "1.34.8",
+      "build": "hebe6cf0_2",
+      "depends": [
+        "libgcc >=15",
+        "__glibc >=2.17,<3.0.a0"
+      ]
+    },
+    {
+      "name": "libev-4.33-h280c20c_3.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libev-4.33-h280c20c_3.conda",
+      "sha256": "e4418f68d01a6307c4431b585c71b584f40189877364e542ee87deb777f5e85b",
+      "size": 43220,
+      "package": "libev",
+      "version": "4.33",
+      "build": "h280c20c_3",
+      "depends": [
+        "libgcc >=14",
+        "__glibc >=2.17,<3.0.a0"
+      ]
+    },
+    {
+      "name": "keyutils-1.6.3-h7cc23a3_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/keyutils-1.6.3-h7cc23a3_1.conda",
+      "sha256": "dd053c96dcb0dcfd59422aefea9d2fe937a190167f34fba7893ec1e10a7e8963",
+      "size": 135295,
+      "package": "keyutils",
+      "version": "1.6.3",
+      "build": "h7cc23a3_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15"
+      ]
+    },
+    {
+      "name": "pthread-stubs-0.4-h7cc23a3_1004.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-h7cc23a3_1004.conda",
+      "sha256": "4a44fd00ea73b79ca2c89b0727b9ccf61c506ead71e67a9abfa4c590042b5a4a",
+      "size": 9630,
+      "package": "pthread-stubs",
+      "version": "0.4",
+      "build": "h7cc23a3_1004",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15"
+      ]
+    },
+    {
+      "name": "cuda-nvvm-tools-12.9.86-h4bc722e_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/cuda-nvvm-tools-12.9.86-h4bc722e_2.conda",
+      "sha256": "45f5e881ed0d973132a5475a0b5c066db6e748ef3a831a14dba8374b252e0067",
+      "size": 24246736,
+      "package": "cuda-nvvm-tools",
+      "version": "12.9.86",
+      "build": "h4bc722e_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "cuda-version >=12.9,<12.10.0a0",
+        "libgcc >=12"
+      ]
+    },
+    {
+      "name": "openssl-3.6.5-h781a0a9_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.5-h781a0a9_0.conda",
+      "sha256": "9c1533f1cf784f0e250919c0c9762d0b0e6bc727a79290ffb7cea1ceca1d038c",
+      "size": 3195299,
+      "package": "openssl",
+      "version": "3.6.5",
+      "build": "h781a0a9_0",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "ca-certificates",
+        "libgcc >=15"
+      ]
+    },
+    {
+      "name": "libstdcxx-16.2.0-h934c35e_7.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-16.2.0-h934c35e_7.conda",
+      "sha256": "fa7018298629fc429971fffd6ecba3d27a7b02e4e890d6a93ea01ffebe8cb745",
+      "size": 6615436,
+      "package": "libstdcxx",
+      "version": "16.2.0",
+      "build": "h934c35e_7",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc 16.2.0 ha9f2e26_7"
+      ]
+    },
+    {
+      "name": "libedit-3.1.20250104-pl5321h373387f_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libedit-3.1.20250104-pl5321h373387f_1.conda",
+      "sha256": "6473eb8caf2aae830f37caa93db9b26dddf7ac84b63229e8bf7fc0e5c3ab95b0",
+      "size": 135098,
+      "package": "libedit",
+      "version": "3.1.20250104",
+      "build": "pl5321h373387f_1",
+      "depends": [
+        "ncurses",
+        "libgcc >=14",
+        "__glibc >=2.17,<3.0.a0",
+        "ncurses >=6.6,<7.0a0"
+      ]
+    },
+    {
+      "name": "libxcb-1.17.0-hb83e432_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libxcb-1.17.0-hb83e432_2.conda",
+      "sha256": "7b49e6fd2a584b7f072943e6adf4149677af5121246975278804782d37752837",
+      "size": 395120,
+      "package": "libxcb",
+      "version": "1.17.0",
+      "build": "hb83e432_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15",
+        "pthread-stubs",
+        "xorg-libxau >=1.0.12,<2.0a0",
+        "xorg-libxdmcp >=1.1.5,<2.0a0"
+      ]
+    },
+    {
+      "name": "libssh2-1.11.1-h6154650_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libssh2-1.11.1-h6154650_1.conda",
+      "sha256": "7e463000fa1cba3f3a6597b776f6ab301d425a96e3bc20d0d9d76a3b9f237aa3",
+      "size": 306045,
+      "package": "libssh2",
+      "version": "1.11.1",
+      "build": "h6154650_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=14",
+        "libzlib >=1.3.2,<2.0a0",
+        "openssl >=3.5.7,<4.0a0"
+      ]
+    },
+    {
+      "name": "icu-78.3-py310h44b86e0_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-py310h44b86e0_2.conda",
+      "sha256": "9f07834f0c546ab14d885ce0366285f61f44e326c0edd1fc63b8294e113ae432",
+      "size": 14459115,
+      "package": "icu",
+      "version": "78.3",
+      "build": "py310h44b86e0_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libstdcxx >=14",
+        "libgcc >=14"
+      ]
+    },
+    {
+      "name": "spirv-tools-2026.3-h7148c6a_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/spirv-tools-2026.3-h7148c6a_1.conda",
+      "sha256": "1ff7cdc2e65d3980f977a898d07f4e2b1b6f50dbf7e2fed88b3b4221faf34365",
+      "size": 2380634,
+      "package": "spirv-tools",
+      "version": "2026.3",
+      "build": "h7148c6a_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15",
+        "libstdcxx >=15"
+      ]
+    },
+    {
+      "name": "cuda-nvcc-tools-12.9.86-he02047a_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/cuda-nvcc-tools-12.9.86-he02047a_2.conda",
+      "sha256": "0e849be7b5e4832ca218ec2c48a9ba3a15a984f629e2e54f38a53f4f57220341",
+      "size": 27380012,
+      "package": "cuda-nvcc-tools",
+      "version": "12.9.86",
+      "build": "he02047a_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "cuda-crt-tools 12.9.86 ha770c72_2",
+        "cuda-nvvm-tools 12.9.86 h4bc722e_2",
+        "cuda-version >=12.9,<12.10.0a0",
+        "libgcc >=12",
+        "libstdcxx >=12"
+      ]
+    },
+    {
+      "name": "cuda-nvrtc-12.9.86-hecca717_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/cuda-nvrtc-12.9.86-hecca717_1.conda",
+      "sha256": "68f81268c25befa9b70dc49af469ab0eb131960e3700b9a4edb46a32da343a28",
+      "size": 67168282,
+      "package": "cuda-nvrtc",
+      "version": "12.9.86",
+      "build": "hecca717_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "cuda-version >=12.9,<12.10.0a0",
+        "libgcc >=14",
+        "libstdcxx >=14"
+      ]
+    },
+    {
+      "name": "libnghttp2-1.68.1-h74cf4be_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libnghttp2-1.68.1-h74cf4be_1.conda",
+      "sha256": "11a2f54a6f391e25738bce0023e6ef499600147bbcf21c1fa69d2e251b03cc6a",
+      "size": 649974,
+      "package": "libnghttp2",
+      "version": "1.68.1",
+      "build": "h74cf4be_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "c-ares >=1.34.8,<2.0a0",
+        "libev >=4.33,<4.34.0a0",
+        "libev >=4.33,<5.0a0",
+        "libgcc >=15",
+        "libstdcxx >=15",
+        "libzlib >=1.3.2,<2.0a0",
+        "openssl >=3.5.7,<4.0a0"
+      ]
+    },
+    {
+      "name": "cuda-cudart-12.9.79-h5888daf_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/cuda-cudart-12.9.79-h5888daf_0.conda",
+      "sha256": "57d1294ecfaf9dc8cdb5fc4be3e63ebc7614538bddb5de53cfd9b1b7de43aed5",
+      "size": 23242,
+      "package": "cuda-cudart",
+      "version": "12.9.79",
+      "build": "h5888daf_0",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "cuda-cudart_linux-64 12.9.79 h3f2d84a_0",
+        "cuda-version >=12.9,<12.10.0a0",
+        "libgcc >=13",
+        "libstdcxx >=13"
+      ]
+    },
+    {
+      "name": "krb5-1.22.2-hbc21106_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-hbc21106_2.conda",
+      "sha256": "2a5c38c85e63df84c4e69ee71439841ce570d259ae3060627bb9a49a938d66f4",
+      "size": 1394333,
+      "package": "krb5",
+      "version": "1.22.2",
+      "build": "hbc21106_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "keyutils >=1.6.3,<2.0a0",
+        "libedit >=3.1.20250104,<3.2.0a0",
+        "libedit >=3.1.20250104,<4.0a0",
+        "libgcc >=15",
+        "libstdcxx >=15",
+        "openssl >=3.5.7,<4.0a0"
+      ]
+    },
+    {
+      "name": "xorg-libx11-1.8.13-he1eb515_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libx11-1.8.13-he1eb515_1.conda",
+      "sha256": "68053eebfa9f0d91666786c8fb5839d989aa9b869add92cb8815228bb2d7302c",
+      "size": 839578,
+      "package": "xorg-libx11",
+      "version": "1.8.13",
+      "build": "he1eb515_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=14",
+        "libxcb >=1.17.0,<2.0a0"
+      ]
+    },
+    {
+      "name": "libpsl-0.23.1-hd9e3e90_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libpsl-0.23.1-hd9e3e90_1.conda",
+      "sha256": "09e8effdc89bc5d021349318d32b85594f5b8d8e3ab8f90a85b81f8fe695a566",
+      "size": 72519,
+      "package": "libpsl",
+      "version": "0.23.1",
+      "build": "hd9e3e90_1",
+      "depends": [
+        "libstdcxx >=15",
+        "libgcc >=15",
+        "__glibc >=2.17,<3.0.a0",
+        "icu >=78.3,<79.0a0"
+      ]
+    },
+    {
+      "name": "glslang-16.6.0-h980caa0_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/glslang-16.6.0-h980caa0_0.conda",
+      "sha256": "390b9e94b29b53366673e5460b433c9daa34788f5cdabf8b30bf40cf086c60dd",
+      "size": 1449282,
+      "package": "glslang",
+      "version": "16.6.0",
+      "build": "h980caa0_0",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15",
+        "libstdcxx >=15",
+        "spirv-tools >=2026,<2027.0a0"
+      ]
+    },
+    {
+      "name": "libcublas-12.9.2.10-h676940d_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libcublas-12.9.2.10-h676940d_0.conda",
+      "sha256": "16666002786d59dd7d62ddbeffe08c4118d882c986c6bf72443c7f983c24fb0a",
+      "size": 467672248,
+      "package": "libcublas",
+      "version": "12.9.2.10",
+      "build": "h676940d_0",
+      "depends": [
+        "__glibc >=2.28,<3.0.a0",
+        "cuda-nvrtc",
+        "cuda-version >=12.9,<12.10.0a0",
+        "libgcc >=14",
+        "libstdcxx >=14"
+      ]
+    },
+    {
+      "name": "xorg-libxrender-0.9.12-hb03c661_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libxrender-0.9.12-hb03c661_1.conda",
+      "sha256": "6901f91d398811e4ec89d7e20a69abac02a7bfebfaf073338b7ea3d1a99685b7",
+      "size": 34645,
+      "package": "xorg-libxrender",
+      "version": "0.9.12",
+      "build": "hb03c661_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=14",
+        "xorg-libx11 >=1.8.13,<2.0a0"
+      ]
+    },
+    {
+      "name": "xorg-libxext-1.3.7-h7cc23a3_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libxext-1.3.7-h7cc23a3_1.conda",
+      "sha256": "aa9bbe8b278aacc194e280ff5037f9f9a1f2c5b33ed97de8e7f01cfbe90dda43",
+      "size": 53124,
+      "package": "xorg-libxext",
+      "version": "1.3.7",
+      "build": "h7cc23a3_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15",
+        "xorg-libx11 >=1.8.13,<2.0a0"
+      ]
+    },
+    {
+      "name": "libcurl-8.22.0-ha042cf0_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libcurl-8.22.0-ha042cf0_0.conda",
+      "sha256": "483b7eb97f56fbb3a9cb7190d33012dfa0a5aaed99ede61465563cd97dd82504",
+      "size": 499651,
+      "package": "libcurl",
+      "version": "8.22.0",
+      "build": "ha042cf0_0",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "krb5 >=1.22.2,<1.23.0a0",
+        "libgcc >=15",
+        "libnghttp2 >=1.68.1,<2.0a0",
+        "libpsl >=0.23.1,<0.24.0a0",
+        "libssh2 >=1.11.1,<2.0a0",
+        "libzlib >=1.3.2,<2.0a0",
+        "openssl >=3.5.8,<4.0a0",
+        "zstd >=1.5.7,<1.6.0a0"
+      ]
+    },
+    {
+      "name": "shaderc-2026.3-hcebf71c_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/shaderc-2026.3-hcebf71c_1.conda",
+      "sha256": "2fa613c823868ef6e05c2e756b1767269f24796564ea9cf4efde61abaae2816e",
+      "size": 113803,
+      "package": "shaderc",
+      "version": "2026.3",
+      "build": "hcebf71c_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "glslang >=16,<17.0a0",
+        "libgcc >=15",
+        "libstdcxx >=15",
+        "spirv-tools >=2026,<2027.0a0"
+      ]
+    },
+    {
+      "name": "xorg-libxrandr-1.5.5-h7cc23a3_1.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/xorg-libxrandr-1.5.5-h7cc23a3_1.conda",
+      "sha256": "05a7f25d7f7f5cd32b27a019233ece97167fd8ade255bc13a0e49e53387f4c30",
+      "size": 31106,
+      "package": "xorg-libxrandr",
+      "version": "1.5.5",
+      "build": "h7cc23a3_1",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=15",
+        "xorg-libx11 >=1.8.13,<2.0a0",
+        "xorg-libxext >=1.3.7,<2.0a0",
+        "xorg-libxrender >=0.9.12,<0.10.0a0"
+      ]
+    },
+    {
+      "name": "libvulkan-loader-1.4.357.0-h0e34353_2.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/libvulkan-loader-1.4.357.0-h0e34353_2.conda",
+      "sha256": "a70c25b66321ee77f9892b205e3247263c400803f543dc8aca53d569a59c5a77",
+      "size": 206957,
+      "package": "libvulkan-loader",
+      "version": "1.4.357.0",
+      "build": "h0e34353_2",
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "libstdcxx >=15",
+        "libgcc >=15",
+        "xorg-libxrandr >=1.5.5,<2.0a0",
+        "xorg-libx11 >=1.8.13,<2.0a0"
+      ]
+    },
+    {
+      "name": "llama.cpp-11351-cuda129_h0b4778f_0.conda",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/llama.cpp-11351-cuda129_h0b4778f_0.conda",
+      "sha256": "2b91589248aba54eebd464e952bd984a9d24fd057cb6854bf0a43fcdea25db6c",
+      "size": 250704863,
+      "package": "llama.cpp",
+      "version": "11351",
+      "build": "cuda129_h0b4778f_0",
+      "depends": [
+        "cuda-version 12.9.*",
+        "__cuda",
+        "cuda-nvcc-tools",
+        "cuda-version >=12.9,<13",
+        "__glibc >=2.17,<3.0.a0",
+        "libgcc >=14",
+        "libstdcxx >=14",
+        "libvulkan-loader >=1.4.357.0,<2.0a0",
+        "libcublas >=12.9.2.10,<13.0a0",
+        "libcurl >=8.22.0,<9.0a0",
+        "shaderc >=2026.3,<2026.4.0a0",
+        "cuda-cudart >=12.9.79,<13.0a0"
+      ]
+    }
+  ]
+}

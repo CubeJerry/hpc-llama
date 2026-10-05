@@ -1,0 +1,28 @@
+# Local application data and private installation files.
+.install/
+.venv/
+.venv.*
+.runtime/
+.runtime.*
+runtime/
+state/
+cache/
+models/
+workspace/
+
+# Python build files.
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Generated releases and local model weights.
+hpc-llm-release.zip
+hpc-llm-release.zip.sha256
+SOURCE_CHECKSUMS.sha256
+*.gguf
+*.safetensors
+.DS_Store
