@@ -37,7 +37,7 @@ For a CPU-only installation, add `--backend cpu`. After installation, `./hpc-llm
 
 Open **Site setup…** in the launcher. Select the scheduler. Enter your site's partition or queue, GPU type, account, and default resources. Select **Save & use**. Add named presets for resource combinations you use often.
 
-The bundled `wehi`, `generic`, and `pbs` profiles are starting points. Check their values against your cluster access. The WEHI defaults request one A30 on `gpuq`, four CPUs, 16 GB of system RAM, and one hour.
+The bundled `generic`, and `pbs` profiles are starting points. Check their values against your cluster access. 
 
 ![Site profile editor](assets/site-setup.png)
 
@@ -94,10 +94,10 @@ Profile paths expand `~` and environment variables such as `$USER`. User profile
 
 ## Choose the model cache
 
-The WEHI profile uses `/vast/scratch/users/$USER/llama_cache`. The generic and PBS profiles default to `cache/models` inside the application folder. To choose another location:
+The generic and PBS profiles default to `cache/models` inside the application folder. To choose another location:
 
 ```bash
-./hpc-llm profiles cache '/vast/scratch/users/$USER/llama_cache'
+./hpc-llm profiles cache '/path/to/folder'
 ./hpc-llm profiles show
 ```
 
