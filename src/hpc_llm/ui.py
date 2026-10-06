@@ -718,6 +718,7 @@ class ChatApp(App):
     """Attachable, API-only terminal application. ``client`` is SessionClient."""
     TITLE = "HPC LLM"
     ENABLE_COMMAND_PALETTE = False
+    DETACH_SAVE_TIMEOUT = 5.0
     BINDINGS = [
         Binding("ctrl+s", "send", "Send / stop", priority=True),
         Binding("ctrl+b", "panel", "Files / chats", priority=True, show=False),
@@ -725,6 +726,7 @@ class ChatApp(App):
         Binding("ctrl+o", "attach", "Attach", priority=True),
         Binding("ctrl+p", "settings", "Settings", priority=True),
         Binding("ctrl+d", "detach", "Detach", priority=True),
+        Binding("ctrl+q", "quit", "Detach", priority=True, show=False),
         Binding("f1", "help", "Help", priority=True),
     ]
     CSS = """
@@ -778,6 +780,9 @@ class ChatApp(App):
         self._output_render_key = ""
         self._chat_list_key = ""
         self._draft_timer = None
+        self._refresh_timer = None
+        self._draft_lock = asyncio.Lock()
+        self._detach_prompt = False
         self._loading_draft = False
         self._draft_dirty = False
         self._last_sent_draft = ""
@@ -847,7 +852,7 @@ class ChatApp(App):
         self.query_one("#paste-copied").display = False
         self.query_one("#drawer").display = self.size.width >= 108
         await self.refresh_state(initial=True)
-        self.set_interval(0.4, self.refresh_state)
+        self._refresh_timer = self.set_interval(0.4, self.refresh_state)
         self.query_one("#composer", TextArea).focus()
 
     async def api(self, method: str, path: str, **kwargs: Any) -> Any:
@@ -872,7 +877,10 @@ class ChatApp(App):
             return
         self._polling = True
         try:
-            self.accept_snapshot(await self.client.state())
+            snapshot = await self.client.state()
+            if self._detaching:
+                return
+            self.accept_snapshot(snapshot)
             for dialog in self.screen_stack:
                 if isinstance(dialog, SettingsDialog):
                     incoming = self.snapshot.get("manifest", {})
@@ -1080,26 +1088,30 @@ class ChatApp(App):
 
     @on(TextArea.Changed, "#composer")
     def draft_changed(self) -> None:
-        if self._loading_draft:
+        if self._loading_draft or self._detaching:
             return
         self._draft_dirty = True
         if self._draft_timer:
             self._draft_timer.stop()
         self._draft_timer = self.set_timer(0.3, self.save_draft)
 
-    async def save_draft(self) -> None:
-        if not self.conversation_id or not self.screen_stack or not self.screen_stack[0].query("#composer"):
-            return
-        draft = self.screen_stack[0].query_one("#composer", TextArea).text
-        if draft == self._last_sent_draft:
-            self._draft_dirty = False
-            return
-        try:
-            await self.api("PATCH", f"/conversations/{self.conversation_id}", json={"draft": draft})
-            self._last_sent_draft = draft
-            self._draft_dirty = False
-        except Exception as exc:
-            self.report_error(f"Draft is still on screen but could not be saved: {safe(exc)}")
+    async def save_draft(self) -> bool:
+        # Serialize a pending autosave and the final save before leaving.
+        async with self._draft_lock:
+            if not self.conversation_id or not self.screen_stack or not self.screen_stack[0].query("#composer"):
+                return True
+            draft = self.screen_stack[0].query_one("#composer", TextArea).text
+            if draft == self._last_sent_draft:
+                self._draft_dirty = False
+                return True
+            try:
+                await self.api("PATCH", f"/conversations/{self.conversation_id}", json={"draft": draft})
+                self._last_sent_draft = draft
+                self._draft_dirty = False
+                return True
+            except Exception as exc:
+                self.report_error(f"Draft is still on screen but could not be saved: {safe(exc)}")
+                return False
 
     @on(ChatComposer.Submitted)
     async def composer_submitted(self) -> None:
@@ -1452,18 +1464,56 @@ class ChatApp(App):
             previous = turns[-1]
             await self.action_send(previous.get("request", {}).get("operation", "chat"), previous["request"]["text"], previous["id"])
 
+    async def action_quit(self) -> None:
+        # Textual's inherited Ctrl+Q otherwise bypasses the final draft save.
+        await self.detach()
+
     async def action_detach(self) -> None:
-        if len(self.screen_stack) == 1:
-            await self.detach()
+        await self.detach()
+
+    def pause_session_timers(self) -> None:
+        if self._refresh_timer:
+            self._refresh_timer.pause()
+        if self._draft_timer:
+            self._draft_timer.stop()
+            self._draft_timer = None
 
     async def on_unmount(self) -> None:
         self._detaching = True
+        self.pause_session_timers()
+        self.workers.cancel_all()
         await self.client.close()
 
-    async def detach(self, new_session: bool = False) -> None:
-        await self.save_draft()
+    async def detach(self, new_session: bool = False, *, discard_draft: bool = False) -> None:
+        if self._detaching or self._detach_prompt:
+            return
+        # Mark departure before awaiting I/O, so repeats cannot start another exit.
         self._detaching = True
-        await self.client.close()
+        self.pause_session_timers()
+        saved = discard_draft
+        if not discard_draft:
+            try:
+                saved = await asyncio.wait_for(self.save_draft(), self.DETACH_SAVE_TIMEOUT)
+            except TimeoutError:
+                self.report_error("Draft save timed out. Your draft is still on screen.")
+        if not saved:
+            self._detaching = False
+            if self._refresh_timer:
+                self._refresh_timer.resume()
+            self._detach_prompt = True
+
+            def confirm_discard(yes: bool) -> None:
+                self._detach_prompt = False
+                if yes:
+                    self.run_worker(self.detach(new_session, discard_draft=True))
+
+            self.push_screen(ConfirmDialog(
+                "Draft was not saved",
+                "Stay here to copy your draft or retry after reconnecting. Detaching now loses the unsaved draft. The GPU session and response keep running.",
+                "Detach without saving",
+            ), confirm_discard)
+            return
+        # Close HTTP during Textual teardown, not while this screen is still running.
         self.exit({"action": "new_session" if new_session else "detach"})
 
     async def stop_session(self, yes: bool) -> None:
@@ -1472,13 +1522,13 @@ class ChatApp(App):
                 await self.save_draft()
                 await self.api("POST", "/stop", json={})
                 self._detaching = True
-                await self.client.close()
+                self.pause_session_timers()
                 self.exit({"action": "stop"})
             except Exception as exc:
                 self.report_error(exc)
 
     def action_help(self) -> None:
-        self.push_screen(TextDialog("Quick help", "Enter sends from the message box. Shift+Enter adds a line; use Ctrl+J if your terminal cannot distinguish Shift+Enter. Ctrl+S sends or explicitly stops a reply; Enter never stops it.\n\nPaste outside text using your terminal's paste command (often Ctrl+Shift+V or Shift+Insert), or the Open OnDemand clipboard controls. Bracketed multiline paste stays in the draft until you send it.\nSelect text and Ctrl+C copies it; Ctrl+X cuts selected composer text. Copy reply copies the latest answer. Copy requests the terminal clipboard and also keeps an in-app copy; browser/terminal permissions may block the external clipboard. Ctrl+V or Paste copied pastes only text copied inside this app, not your laptop clipboard.\n\nCtrl+O attaches a local file. Ctrl+B opens Files / Chats.\nCtrl+N or New chat starts an empty conversation; the old chat stays saved. Ctrl+P opens Settings.\nCtrl+D detaches; the GPU session and any response continue.\n\nChats save automatically. Cancel response only cancels that response. Delete chat only deletes that saved conversation. Stop GPU session (Chats panel) explicitly ends the allocation.\n\nWeb starts Off. Enabling Web permits searches and page requests until you turn it Off. Optional per-request review is in Advanced. Sources disclose snippets versus fetched content. Thinking generation and showing reasoning are separate controls.\n\nContext shows loaded capacity; changing it requires a confirmed model reload. Maximum response 0 means Auto: use remaining context. Temperature and other sampling controls are in Settings → Advanced."))
+        self.push_screen(TextDialog("Quick help", "Enter sends from the message box. Shift+Enter adds a line; use Ctrl+J if your terminal cannot distinguish Shift+Enter. Ctrl+S sends or explicitly stops a reply; Enter never stops it.\n\nPaste outside text using your terminal's paste command (often Ctrl+Shift+V or Shift+Insert), or the Open OnDemand clipboard controls. Bracketed multiline paste stays in the draft until you send it.\nSelect text and Ctrl+C copies it; Ctrl+X cuts selected composer text. Copy reply copies the latest answer. Copy requests the terminal clipboard and also keeps an in-app copy; browser/terminal permissions may block the external clipboard. Ctrl+V or Paste copied pastes only text copied inside this app, not your laptop clipboard.\n\nCtrl+O attaches a local file. Ctrl+B opens Files / Chats.\nCtrl+N or New chat starts an empty conversation; the old chat stays saved. Ctrl+P opens Settings.\nCtrl+D or Ctrl+Q detaches; the GPU session and any response continue.\n\nChats save automatically. Cancel response only cancels that response. Delete chat only deletes that saved conversation. Stop GPU session (Chats panel) explicitly ends the allocation.\n\nWeb starts Off. Enabling Web permits searches and page requests until you turn it Off. Optional per-request review is in Advanced. Sources disclose snippets versus fetched content. Thinking generation and showing reasoning are separate controls.\n\nContext shows loaded capacity; changing it requires a confirmed model reload. Maximum response 0 means Auto: use remaining context. Temperature and other sampling controls are in Settings → Advanced."))
 
     @on(Button.Pressed)
     async def buttons(self, event: Button.Pressed) -> None:
@@ -2049,7 +2099,8 @@ class LauncherApp(App):
     """Returns a start/resume choice; root CLI submits only after this UI exits."""
     TITLE = "HPC LLM"
     ENABLE_COMMAND_PALETTE = False
-    BINDINGS = [Binding("ctrl+d", "quit", "Exit")]
+    BINDINGS = [Binding("ctrl+d", "quit", "Exit", priority=True),
+                Binding("ctrl+q", "quit", "Exit", priority=True, show=False)]
     CSS = """
     Screen { align: center middle; }
     #launch { width: 94%; max-width: 120; height: auto; max-height: 100%; padding: 1 2; border: ascii $accent; }

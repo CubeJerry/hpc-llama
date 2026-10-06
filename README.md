@@ -153,7 +153,7 @@ Unchanged, previously verified files reuse their checksum result. New or changed
 
 Launch changes apply to that allocation only. You do not need to edit or reinstall the profile each time. You cannot change an existing allocation's expiry through the app.
 
-**Detach** closes the terminal view and leaves the allocation running. It continues to use allocated GPU time. Open `./hpc-llm` and select **Resume** to reconnect to a running session. **Restore saved chats** starts a new allocation for a saved session. **Stop GPU session** releases the allocation.
+**Detach**, Ctrl+D, or Ctrl+Q closes the chat view and leaves the allocation running. It continues to use allocated GPU time. Open `./hpc-llm` and select **Resume** to reconnect to a running session. **Restore saved chats** starts a new allocation for a saved session. **Stop GPU session** releases the allocation. In the launcher, Ctrl+D or Ctrl+Q exits the application.
 
 
 ## Use the chat interface

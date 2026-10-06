@@ -211,7 +211,7 @@ def _spawn_demo(manager, root):
     return _wait_ready(manager, manifest, 30)
 
 
-def attach(manager, manifest):
+def attach(manager, manifest, *, return_to_launcher=True):
     from .lifecycle import inside_allocation
     if manifest.demo or (manifest.profile.scheduler == "slurm" and inside_allocation(manifest)):
         result = asyncio.run(run_tui(manifest))
@@ -221,11 +221,12 @@ def attach(manager, manifest):
         # Launcher fullscreen app has exited before the step owns this terminal.
         try:
             from .lifecycle import scheduler_environment
-            result = subprocess.call(argv, env=scheduler_environment())
+            from .terminal import run_attached
+            result = run_attached(argv, env=scheduler_environment())
         except KeyboardInterrupt:
             display("\nDetached. The allocation remains active; use attach or stop.")
             return 130
-    if result == 42:
+    if result == 42 and return_to_launcher:
         return launcher(manager, manager.root)
     return result
 
@@ -273,7 +274,9 @@ def launcher(manager, root, resume_only=False):
         if action == "resume":
             try:
                 manifest = _wait_ready(manager, manager.load(choice["session_id"]))
-                result = attach(manager, manifest)
+                result = attach(manager, manifest, return_to_launcher=False)
+                if result == 42:
+                    continue
                 if result not in (0, 130):
                     error_message = "Could not attach to that allocation. Check its refreshed status and try again."
                     continue
@@ -298,7 +301,9 @@ def launcher(manager, root, resume_only=False):
                 resources = ResourceRequest.model_validate(choice.get("resources", previous.resources.model_dump()))
                 replacement = manager.restart_saved(previous, resources, profile=profile)
                 replacement = manager.submit(replacement)
-                result = attach(manager, _wait_ready(manager, replacement))
+                result = attach(manager, _wait_ready(manager, replacement), return_to_launcher=False)
+                if result == 42:
+                    continue
                 if result not in (0, 130):
                     error_message = "The restored session could not attach. Check its status under Resume before trying again."
                     continue
@@ -316,8 +321,8 @@ def launcher(manager, root, resume_only=False):
             settings.threads_batch = min(settings.threads_batch, max(1, resources.cpus - 1))
             manifest = manager.create(model, resources, profile, settings)
             manifest = manager.submit(manifest)
-            result = attach(manager, _wait_ready(manager, manifest))
-            if isinstance(result, dict) and result.get("action") == "new_session":
+            result = attach(manager, _wait_ready(manager, manifest), return_to_launcher=False)
+            if result == 42:
                 continue
             return result
         return 0
