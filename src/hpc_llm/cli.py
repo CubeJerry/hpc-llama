@@ -68,7 +68,7 @@ def parse_args(argv=None):
             command.add_argument("--" + field)
         for field in ("gpu-count", "cpus", "memory-gb"):
             command.add_argument("--" + field, type=int)
-    smoke = sub.add_parser("smoke", help="WEHI smoke test: dry run unless --execute")
+    smoke = sub.add_parser("smoke", help="Cluster smoke test: dry run unless --execute")
     smoke.add_argument("--model", required=True); smoke.add_argument("--execute", action="store_true")
     smoke.add_argument("--runtime", default=""); smoke.add_argument("--minutes", type=int, default=20)
     smoke.add_argument("--projector", help="Matching vision projector GGUF")
@@ -171,7 +171,7 @@ def doctor(root):
     if (root / "models").exists():
         for model in _library(root).list():
             display(f"Model: {model.name}; path {'present' if Path(model.path).is_file() else 'MISSING'}; context {model.supported_context or 'unverified'}")
-    display("WEHI offload, step flags, terminals and compute-node web egress require the explicit smoke test.")
+    display("GPU offload, scheduler attachment, terminal behavior and compute-node web access require a smoke test on your cluster.")
     return 0
 
 
