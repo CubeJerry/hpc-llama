@@ -1940,7 +1940,16 @@ class ImportDialog(Dialog):
     @on(Select.Changed, "#model-target")
     def target_changed(self, event: Select.Changed) -> None:
         model = next((m for m in self.models if m["id"] == event.value), None)
-        self.query_one("#model-local").display = model is None
+        local = self.query_one("#model-local", Collapsible)
+        local.display = True
+        local.collapsed = False
+        local.title = "Attach existing local companions" if model else "Register existing local files"
+        main_path = self.query_one("#model-path", Input)
+        main_path.value = model["path"] if model else ""
+        main_path.disabled = model is not None
+        self.query_one("#model-projector", Input).value = ""
+        self.query_one("#model-mtp", Input).value = ""
+        self.query_one("#model-register", Button).label = "Attach local companions" if model else "Register local model"
         self.query_one("#model-options", Collapsible).collapsed = model is None
         self.query_one("#model-quant").display = model is None
         self.query_one("#model-file").display = False
@@ -2029,7 +2038,16 @@ class ImportDialog(Dialog):
             if id_ == "model-register":
                 projector = self.query_one("#model-projector", Input).value.strip()
                 mtp = self.query_one("#model-mtp", Input).value.strip()
-                completed_model = await asyncio.to_thread(self.service.register, self.query_one("#model-path", Input).value,
+                target = self.query_one("#model-target", Select).value
+                path = self.query_one("#model-path", Input).value.strip()
+                if target != "new":
+                    model = next((data(m) for m in self.service.list() if data(m)["id"] == target), None)
+                    if model is None:
+                        raise ValueError("The selected model is no longer registered. Reopen Models and select it again.")
+                    if not projector and not mtp:
+                        raise ValueError("Enter a local vision projector or MTP head file path to attach.")
+                    path = model["path"]
+                completed_model = await asyncio.to_thread(self.service.register, path,
                     **({"projector_path": projector} if projector else {}), **({"mtp_path": mtp} if mtp else {}))
             elif id_ == "model-list":
                 self.install_plan = None
