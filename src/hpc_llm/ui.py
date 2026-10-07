@@ -2091,6 +2091,8 @@ class ImportDialog(Dialog):
             self.query_one("#model-cancel", Button).disabled = True
         if self.close_requested:
             self.dismiss(None)
+        elif isinstance(completed_model, Path):
+            self.query_one("#model-progress", Static).update(safe(f"Downloaded to: {completed_model}"))
         elif completed_model is not None:
             self.dismiss(data(completed_model))
 

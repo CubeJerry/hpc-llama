@@ -451,7 +451,7 @@ def main(argv=None):
                     display("DRY RUN — metadata checked; no model weights downloaded.")
                     return 0
                 result = library.execute_install(plan)
-                display("Model registered. Start a new GPU session to load added companions; existing sessions retain their current model files.")
+                display(f"Downloaded to: {result}" if isinstance(result, Path) else "Model registered. Start a new GPU session to load added companions; existing sessions retain their current model files.")
             elif args.model_action == "download":
                 result = library.download(args.repo, args.filename, args.revision, projector_filename=args.projector_filename, mtp_filename=args.mtp_filename)
             else:

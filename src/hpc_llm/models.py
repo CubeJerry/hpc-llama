@@ -39,7 +39,7 @@ def _install_source(source: str, revision: str) -> tuple[str, str, str | None]:
             if revision != 'main' and revision != parts[3]:
                 raise AppError('validation', 'The URL revision conflicts with the requested revision.')
             revision = parts[3]
-            if len(parts) > 4 and parts[-1].lower().endswith('.gguf'):
+            if len(parts) > 4 and (parts[2] in ('blob', 'resolve') or parts[-1].lower().endswith('.gguf')):
                 filename = '/'.join(parts[4:])
         query_file = parse_qs(url.query).get('show_file_info', [])
         if query_file:
@@ -48,8 +48,8 @@ def _install_source(source: str, revision: str) -> tuple[str, str, str | None]:
             filename = query_file[0]
     if not re.fullmatch(r'[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*', source):
         raise AppError('validation', 'Use a Hugging Face owner/repository or HTTPS model URL.')
-    if filename and (not filename.lower().endswith('.gguf') or Path(filename).is_absolute() or '..' in Path(filename).parts):
-        raise AppError('validation', 'The URL must select a GGUF file inside the repository.')
+    if filename and (Path(filename).is_absolute() or '..' in Path(filename).parts or '\\' in filename or '\x00' in filename):
+        raise AppError('validation', 'The URL must select a file inside the repository.')
     return source, revision, filename
 
 
@@ -136,7 +136,8 @@ def _verify_cached(path: Path, item: dict, receipts=None, force_verify=False, id
                 raise AppError('storage', 'Model changed during verification; retry when it is no longer being modified.')
         if checksum != item['sha256']:
             raise AppError('storage', 'An existing download failed checksum verification; move it aside before retrying.')
-    gguf_metadata(path)
+    if item['filename'].lower().endswith('.gguf'):
+        gguf_metadata(path)
     if _identity(path.lstat()) != before:
         raise AppError('storage', 'Model changed during verification; retry when it is no longer being modified.')
     if receipts:
@@ -365,8 +366,8 @@ class ModelLibrary:
         model.defaults = validated.model_dump()
         _atomic(self.registry, [m.model_dump() for m in models])
 
-    def list_remote(self, repo_id, revision='main'):
-        return list_remote(repo_id, revision)
+    def list_remote(self, repo_id, revision='main', include_files=False):
+        return list_remote(repo_id, revision, include_files=include_files)
 
     def list_install_choices(self, source, revision='main') -> dict:
         """List installable variants for an ambiguity chooser, without downloading weights."""
@@ -402,6 +403,22 @@ class ModelLibrary:
             raise AppError('validation', 'This local model has no repository provenance; supply its Hugging Face repository explicitly.')
         revision = revision or (target.revision if target else None) or 'main'
         repo_id, revision, filename = _install_source(source, revision)
+        download_only = bool(filename and not filename.lower().endswith('.gguf'))
+        if download_only:
+            if target or projector not in (None, 'auto', 'none') or mtp not in (None, 'auto', 'none'):
+                raise AppError('validation', 'Download non-GGUF files separately from registered-model companion upgrades.')
+            listing = self.list_remote(repo_id, revision, include_files=True)
+            selected = next((item for item in listing if item['filename'] == filename), None)
+            if selected is None:
+                raise AppError('validation', 'The file is not present in this repository revision.')
+            destination = self.cache_dir / repo_id.replace('/', '--') / selected['revision']
+            cached = _verify_cached(destination / filename, selected, self._verification, force_verify)
+            return {'repo_id': repo_id, 'revision': selected['revision'], 'filename': filename,
+                    'download_only': True, 'model_id': None, 'model_path': None,
+                    'projector_filename': None, 'mtp_filename': None, 'files': [selected],
+                    'size_bytes': selected['size'], 'destination': str(destination),
+                    'cached_bytes': (destination / filename).stat().st_size if cached else 0,
+                    'force_verify': bool(force_verify)}
         listing = self.list_remote(repo_id, revision)
         mains = [item for item in listing if not item.get('projector') and not item.get('mtp') and not DRAFT.search(item['filename'])]
         # An explicitly selected filename may be an embedded-MTP main despite its
@@ -492,12 +509,14 @@ class ModelLibrary:
             except AppError as exc:
                 raise AppError('validation', 'The selected repository main model does not match the registered weights; choose their original repository/revision.') from exc
 
-    def execute_install(self, plan, cancel=None, progress=None) -> ModelSpec:
+    def execute_install(self, plan, cancel=None, progress=None) -> ModelSpec | Path:
         # Re-resolve only the immutable revision and explicit filenames, never a branch.
         pinned = plan['revision']
         if not re.fullmatch(r'[0-9a-f]{40,64}', pinned):
             raise AppError('validation', 'Installation plan must use an immutable revision.')
-        verified = self.plan_install(plan['repo_id'], quant=plan['filename'], revision=pinned,
+        source = (f"https://huggingface.co/{plan['repo_id']}/resolve/{pinned}/{quote(plan['filename'])}"
+                  if plan.get('download_only') else plan['repo_id'])
+        verified = self.plan_install(source, quant=plan['filename'], revision=pinned,
             projector=plan.get('projector_filename') or 'none', mtp=plan.get('mtp_filename') or 'none', model_id=plan.get('model_id'))
         if verified['files'] != plan['files'] or verified['model_path'] != plan.get('model_path'):
             raise AppError('validation', 'The installation plan changed; preview it again before downloading.')
@@ -507,6 +526,8 @@ class ModelLibrary:
             self._download_one(verified['repo_id'], item, destination, cancel, progress)
         if cancel and (cancel() if callable(cancel) else cancel.is_set()):
             raise AppError('network', 'Download cancelled; the model registration was not changed.')
+        if verified.get('download_only'):
+            return destination / verified['filename']
         target = self._target(plan.get('model_id'))
         if target and target.path != plan['model_path']:
             raise AppError('validation', 'Registered model changed during download; preview the upgrade again.')
@@ -522,7 +543,7 @@ class ModelLibrary:
                 kwargs[key + '_path'] = destination / verified[key + '_filename']
         return self.register(target.path if target else destination / verified['filename'], **kwargs)
 
-    def install(self, source=None, quant=None, revision=None, projector=None, cancel=None, progress=None, mtp='none', model_id=None, force_verify=False) -> ModelSpec:
+    def install(self, source=None, quant=None, revision=None, projector=None, cancel=None, progress=None, mtp='none', model_id=None, force_verify=False) -> ModelSpec | Path:
         return self.execute_install(self.plan_install(source, quant, revision, projector, mtp, model_id, force_verify), cancel, progress)
 
     def download(self, repo_id, filename, revision, cancel=None, progress=None, projector_filename=None, mtp_filename=None):
@@ -591,7 +612,7 @@ class ModelLibrary:
             raise AppError('network', 'Model download failed; partial bytes are retained. Check download egress, disk quota, and retry explicitly.') from exc
 
 
-def list_remote(repo_id, revision='main'):
+def list_remote(repo_id, revision='main', include_files=False):
     if not re.fullmatch(r'[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*', repo_id) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,128}', revision):
         raise AppError('validation', 'Use a Hugging Face owner/repository and revision name or commit hash.')
     try:
@@ -608,7 +629,9 @@ def list_remote(repo_id, revision='main'):
         result = []
         for entry in metadata.get('siblings', []):
             filename = entry.get('rfilename', '')
-            if filename.endswith('.gguf') and not Path(filename).is_absolute() and '..' not in Path(filename).parts:
+            if (filename and (include_files or filename.lower().endswith('.gguf'))
+                    and not Path(filename).is_absolute() and '..' not in Path(filename).parts
+                    and '\\' not in filename and '\x00' not in filename):
                 lfs = entry.get('lfs') or {}
                 result.append({'filename': filename, 'revision': pinned, 'size': lfs.get('size') or entry.get('size') or 0,
                     'sha256': lfs.get('sha256'), 'projector': bool(re.search('mmproj|projector', filename, re.I)), 'mtp': bool(DRAFT.search(filename))})
