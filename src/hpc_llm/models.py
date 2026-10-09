@@ -18,6 +18,20 @@ DRAFT = re.compile(r'(?:^|[._/-])(?:mtp|draft|eagle3?|dflash|dspark)(?:[._/-]|$)
 QUANT = re.compile(r'(?:^|[._-])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|F16|BF16|F32)(?:[._-]|$)', re.I)
 
 
+def _remote_head(item: dict, listing: list[dict]) -> bool:
+    """Recognize paired MTP main variants; GGUF metadata still validates registration."""
+    name = item['filename']
+    if item.get('projector'):
+        return False
+    # Publishers also use Foo-MTP-Q4_K_M alongside Foo-Q4_K_M for
+    # full models with embedded MTP, not separately loadable draft heads.
+    plain = re.sub(r'([._-])(?:low[._-])?mtp(?=[._-])', '', name, flags=re.I)
+    if plain != name and any(row['filename'].lower() == plain.lower()
+                             and not row.get('projector') for row in listing):
+        return False
+    return bool(item.get('mtp') or DRAFT.search(name))
+
+
 def _install_source(source: str, revision: str) -> tuple[str, str, str | None]:
     """Normalize a repository or an ordinary Hugging Face file-page URL."""
     source = source.strip()
@@ -373,12 +387,12 @@ class ModelLibrary:
         """List installable variants for an ambiguity chooser, without downloading weights."""
         repo_id, revision, filename = _install_source(source, revision)
         listing = self.list_remote(repo_id, revision)
-        mains = [item for item in listing if not item.get('projector') and not item.get('mtp') and not DRAFT.search(item['filename'])
+        mains = [item for item in listing if not item.get('projector') and not _remote_head(item, listing)
                  and (not SHARD.fullmatch(Path(item['filename']).name)
                       or SHARD.fullmatch(Path(item['filename']).name)[2] == '00001')]
         return {'repo_id': repo_id, 'revision': listing[0]['revision'] if listing else revision,
                 'models': mains, 'projectors': [item for item in listing if item.get('projector')],
-                'mtp_heads': [item for item in listing if item.get('mtp') or DRAFT.search(item['filename'])]}
+                'mtp_heads': [item for item in listing if _remote_head(item, listing)]}
 
     def _target(self, model_id):
         if model_id is None:
@@ -420,7 +434,7 @@ class ModelLibrary:
                     'cached_bytes': (destination / filename).stat().st_size if cached else 0,
                     'force_verify': bool(force_verify)}
         listing = self.list_remote(repo_id, revision)
-        mains = [item for item in listing if not item.get('projector') and not item.get('mtp') and not DRAFT.search(item['filename'])]
+        mains = [item for item in listing if not item.get('projector') and not _remote_head(item, listing)]
         # An explicitly selected filename may be an embedded-MTP main despite its
         # name; downloaded GGUF metadata determines its role before registration.
         explicit = filename or (quant if quant and quant.lower().endswith('.gguf') else None)
@@ -455,7 +469,7 @@ class ModelLibrary:
         projectors = [item for item in listing if item.get('projector')]
         main_names = {item['filename'] for item in main_files}
         heads = [item for item in listing if item['filename'] not in main_names
-                 and (item.get('mtp') or DRAFT.search(item['filename']))]
+                 and _remote_head(item, listing)]
         companion = None
         projector = projector if projector is not None else ('none' if target else 'auto')
         if projector == 'auto':
