@@ -2070,6 +2070,8 @@ class ImportDialog(Dialog):
                     except Exception:
                         raise original
                     self.query_one("#model-file", Select).set_options([(safe(row["filename"]), row["filename"]) for row in choices["models"]])
+                    if variant in {row["filename"] for row in choices["models"]}:
+                        self.query_one("#model-file", Select).value = variant
                     self.query_one("#model-file", Select).display = len(choices["models"]) > 1
                     self.query_one("#model-remote-projector", Select).set_options(
                         [("Automatic", "auto"), ("Skip / keep existing", "none")]
