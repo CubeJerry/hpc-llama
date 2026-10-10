@@ -816,6 +816,7 @@ class ChatApp(App):
                 with TabbedContent():
                     with TabPane("Files", id="files-tab"):
                         yield Input(placeholder="Find file…", id="file-filter")
+                        yield Button("Refresh files", id="refresh-files", tooltip="Reload the workspace listing after uploading or changing files. Keeps the current filter; reopen folders to see updated contents.", compact=True)
                         yield Tree("Workspace", id="file-tree")
                         yield Button("Attach…", id="attach")
                         yield Button("Selected files…", id="attachments")
@@ -1578,6 +1579,12 @@ class ChatApp(App):
             self.push_screen(SourceSelectionDialog([s for s in records(sources) if s["id"] in self.source_ids]), lambda result: self.sources_result(result, replace=True))
         elif id_ == "workspace":
             self.push_screen(ValueDialog("Choose workspace", "Explicitly choose a directory for browsing, attachments and exports. Symlink and path rules are checked by the supervisor.", self._file_root), self.workspace_result)
+        elif id_ == "refresh-files":
+            event.button.disabled = True
+            try:
+                await self.load_files(path=self._file_root or None, query=self.query_one("#file-filter", Input).value)
+            finally:
+                event.button.disabled = False
         elif id_ == "file-actions":
             self.push_screen(FileActionsDialog([a for a in records(self.snapshot.get("attachments")) if a["id"] in self.attachment_ids]), self.file_action_result)
         elif id_ == "export":
