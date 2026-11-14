@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 from .contracts import AppError, InferenceSettings, ModelSpec, inspect_reasoning_template
 
 SHARD = re.compile(r'^(.*)-(\d{5})-of-(\d{5})\.gguf$', re.I)
-DRAFT = re.compile(r'(?:^|[._/-])(?:mtp|draft|eagle3?|dflash|dspark)(?:[._/-]|$)', re.I)
+DRAFT = re.compile(r'(?:^|[._/-])(?:fastmtp|mtp|draft|eagle3?|dflash|dspark)(?:[._/-]|$)', re.I)
 QUANT = re.compile(r'(?:^|[._-])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|F16|BF16|F32)(?:[._-]|$)', re.I)
 
 

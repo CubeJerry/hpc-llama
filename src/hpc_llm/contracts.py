@@ -124,7 +124,7 @@ class BackendCapabilities(Record):
 class InferenceSettings(Record):
     thinking: Literal["auto", "on", "off", "minimal", "low", "medium", "high", "xhigh"] = "auto"
     show_reasoning: bool = False
-    acceleration: Literal["off", "auto", "mtp"] = "off"
+    acceleration: Literal["off", "auto", "embedded", "mtp"] = "off"
     spec_draft_n_max: int = Field(default=3, ge=1, le=64)
     spec_draft_n_min: int = Field(default=0, ge=0, le=64)
     spec_draft_p_min: float = Field(default=0.0, ge=0, le=1)

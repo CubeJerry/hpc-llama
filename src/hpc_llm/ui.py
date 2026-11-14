@@ -377,7 +377,7 @@ class AdvancedDialog(Dialog):
                     with VerticalScroll(classes="dialog-body"):
                         yield plain("Changes reload the model inside this allocation after confirmation. One inference slot.", classes="help")
                         yield Label("Acceleration")
-                        yield Select([("Off", "off"), ("Auto · use MTP when available", "auto"), ("MTP · require support", "mtp")], value=self.settings.get("acceleration", "off"), allow_blank=False, id="adv-acceleration")
+                        yield Select([("Off", "off"), ("Auto · use MTP when available", "auto"), ("Embedded MTP", "embedded"), ("MTP · require support", "mtp")], value=self.settings.get("acceleration", "off"), allow_blank=False, id="adv-acceleration")
                         yield plain(f"{self.capabilities.get('acceleration_status', 'Off')}\n{self.capabilities.get('acceleration_reason', 'MTP is disabled')}", id="acceleration-status", classes="help")
                         yield plain("Auto falls back to ordinary generation when MTP is unavailable. MTP requires a compatible runtime and embedded layers or a matching head. Adding companions in Models takes effect in a new allocation.", classes="help")
                         with Collapsible(title="MTP draft tuning", collapsed=True):
@@ -2158,12 +2158,12 @@ class LauncherApp(App):
     #launch .help { color: $text-muted; }
     """ + PORTABLE_BORDERS_CSS
 
-    def __init__(self, models, sessions, profile, model_service=None, inventory=None, error_message: str = "", profile_service=None):
+    def __init__(self, models, sessions, profile, model_service=None, inventory=None, error_message: str = "", profile_service=None, ood_origin: str = ""):
         super().__init__()
         self.models = [data(m) for m in models]
         self.sessions = sorted([data(s) for s in sessions], key=lambda session: session.get("created_at", 0), reverse=True)
         self.resumable_sessions = [session for session in self.sessions if session_can_resume(session)]
-        self.saved_sessions = [session for session in self.sessions if session_is_ended(session)]
+        self.saved_sessions = [session for session in self.sessions if session_is_ended(session) and session.get("chat_mode") != "browser"]
         self.profile = data(profile)
         self.resources = dict(self.profile.get("resources", ResourceRequest().model_dump()))
         self.settings = InferenceSettings().model_dump()
@@ -2171,6 +2171,7 @@ class LauncherApp(App):
         self.inventory = inventory or {}
         self.error_message = error_message
         self.profile_service = profile_service
+        self.ood_origin = ood_origin
 
     def on_mount(self) -> None:
         self.limit_body_height(self.size.height)
@@ -2198,6 +2199,7 @@ class LauncherApp(App):
                     with Horizontal(classes="session-row"):
                         yield Select([(self.session_label(s), s["id"]) for s in self.resumable_sessions], value=self.resumable_sessions[0]["id"], allow_blank=False, id="resume-session")
                         yield Button("Resume", id="resume", variant="primary")
+                        yield Button("Stop", id="stop-session", variant="error")
                 elif self.sessions:
                     yield plain("No running GPU session to resume.", classes="help")
                 if self.saved_sessions:
@@ -2217,6 +2219,15 @@ class LauncherApp(App):
                 with Horizontal(id="launch-resource-row"):
                     yield Button(self.resource_summary(), id="resources")
                     yield Input(self.resources["walltime"], id="launch-walltime", tooltip="For this new allocation only. Use HH:MM:SS or D-HH:MM:SS; the saved profile stays unchanged.")
+                yield Label("3  Chat interface")
+                yield Select([("Browser · native llama.cpp", "browser"), ("Terminal · legacy chat and file tools", "terminal")], value="browser", allow_blank=False, id="launch-chat-mode")
+                yield Label("Open OnDemand address (https://host, no path)", id="launch-ood-label")
+                yield Input(self.ood_origin, placeholder="https://ondemand.example.edu", id="launch-ood-origin", tooltip="The chat page runs inside the GPU job. This address is remembered after submission.")
+                yield Label("Context tokens")
+                yield Input(str(self.settings["context"]), type="integer", id="launch-context")
+                yield Label("MTP acceleration")
+                yield Select([("Off", "off"), ("Auto", "auto"), ("Embedded MTP", "embedded"), ("Registered MTP sidecar", "mtp")], value=self.settings["acceleration"], allow_blank=False, id="launch-acceleration")
+                yield plain("Browser mode prints a compute-node link; the batch job continues after you close the terminal. Native chat does not include the legacy file tools or web search.", classes="help")
                 yield plain("No GPU job starts merely by opening this screen.", classes="help")
                 yield plain(self.error_message, id="launch-error", classes="error")
             with Horizontal(classes="actions"):
@@ -2249,6 +2260,8 @@ class LauncherApp(App):
             defaults = {"context": 8192} if model.get("projector_path") else {}
             defaults.update(model.get("defaults") or {})
             self.settings = InferenceSettings(**defaults).model_dump()
+            self.query_one("#launch-context", Input).value = str(self.settings["context"])
+            self.query_one("#launch-acceleration", Select).value = self.settings["acceleration"]
             weights = f"{model.get('size_bytes', 0) / 2**30:.2f} GiB weights" if model.get("size_bytes") else "Weight size unknown"
             self.query_one("#launch-model-info", Static).update(safe(f"{model.get('quantization') or 'Quantization unknown'} · {weights} · Context {model.get('supported_context') or 'unknown'}\nVRAM also needs context/KV and runtime buffers; weights alone do not guarantee fit."))
 
@@ -2259,13 +2272,29 @@ class LauncherApp(App):
             self.exit(None)
         elif id_ == "resume":
             self.exit({"action": "resume", "session_id": self.query_one("#resume-session", Select).value})
+        elif id_ == "stop-session":
+            self.push_screen(ConfirmDialog("Stop this GPU job?", "This ends the selected allocation and releases its GPU. Export any native browser chats you want to keep first.", "Stop job"), self.stop_result)
         elif id_ == "restart-saved":
             if self.validate_launch_resources():
                 self.push_screen(ConfirmDialog("Start a new GPU allocation for saved chats?", f"Time limit: {self.resources['walltime']}. Uses the saved model and conversations with the currently selected resources. The previous allocation must have ended; live sessions should use Resume. Nothing starts until you confirm.", "Start new"), self.restart_result)
         elif id_ == "start":
             model_id = self.query_one("#launch-model", Select).value
             if model_id is not Select.NULL and self.validate_launch_resources():
-                self.exit({"action": "start", "model_id": model_id, "resources": self.resources, "settings": self.settings})
+                try:
+                    from .compute_web import validate_origin
+                    mode = str(self.query_one("#launch-chat-mode", Select).value)
+                    origin = self.query_one("#launch-ood-origin", Input).value.strip()
+                    if mode == "browser":
+                        origin = validate_origin(origin)
+                    settings = InferenceSettings(**dict(self.settings,
+                        context=int(self.query_one("#launch-context", Input).value),
+                        acceleration=str(self.query_one("#launch-acceleration", Select).value))).model_dump()
+                except ValueError as exc:
+                    self.query_one("#launch-error", Static).update(safe(str(exc)))
+                    self.query_one("#launch-error").scroll_visible(immediate=True)
+                    return
+                self.exit({"action": "start", "model_id": model_id, "resources": self.resources,
+                           "settings": settings, "chat_mode": mode, "ood_origin": origin})
         elif id_ == "resources":
             resources = dict(self.resources, walltime=self.query_one("#launch-walltime", Input).value.strip())
             self.push_screen(ResourceDialog(resources, self.inventory, self.profile), self.resource_result)
@@ -2276,6 +2305,14 @@ class LauncherApp(App):
                 self.query_one("#launch-error", Static).update(safe(getattr(exc, "message", str(exc))))
         elif id_ == "import-model":
             self.push_screen(ImportDialog(self.model_service), self.import_result)
+
+    @on(Select.Changed, "#launch-chat-mode")
+    def chat_mode_changed(self, event: Select.Changed) -> None:
+        self.query_one("#launch-ood-origin", Input).disabled = event.value != "browser"
+
+    def stop_result(self, yes: bool) -> None:
+        if yes:
+            self.exit({"action": "stop", "session_id": self.query_one("#resume-session", Select).value})
 
     def resource_result(self, result: dict | None) -> None:
         if result:

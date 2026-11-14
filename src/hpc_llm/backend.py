@@ -73,6 +73,8 @@ def available_port() -> int:
 class Backend:
     def __init__(self, manifest):
         self.manifest = manifest
+        self.native_webui = False
+        self.native_host = "127.0.0.1"
         self.settings = manifest.settings.model_copy(deep=True)
         self.capabilities = manifest.capabilities.model_copy(deep=True)
         self.process = None
@@ -207,6 +209,9 @@ class Backend:
             else:
                 try:
                     command = build_backend_command(capabilities, self.manifest.model, settings, self.manifest.resources, port, self._key_file)
+                    if self.native_webui:
+                        command = [arg for arg in command if arg != "--no-webui"]
+                        command[command.index("--host") + 1] = self.native_host
                 except BaseException:
                     await self._close()
                     raise

@@ -30,6 +30,10 @@ def parse_args(argv=None):
     parser.add_argument("--demo", action="store_true", help="CPU-only simulated backend; no Slurm, internet or model download")
     parser.add_argument("--check", action="store_true", help="Check installed application without allocating or networking")
     sub = parser.add_subparsers(dest="command")
+    from .browser import add_arguments
+    add_arguments(sub)
+    launch = sub.add_parser("launch", help="Select a model/resources in the TUI, then open native browser chat")
+    launch.add_argument("--ood-url", help="Open OnDemand HTTPS origin; remembered for future launches")
     sub.add_parser("doctor")
     sub.add_parser("sessions")
     attach = sub.add_parser("attach"); attach.add_argument("session_id", nargs="?")
@@ -213,6 +217,11 @@ def _spawn_demo(manager, root):
 
 def attach(manager, manifest, *, return_to_launcher=True):
     from .lifecycle import inside_allocation
+    from .compute_web import is_compute_browser, show_browser
+    if is_compute_browser(manifest):
+        return show_browser(manifest)
+    if (Path(manifest.directory) / "browser.json").exists():
+        raise AppError("validation", f"This is a native web session. Use ./hpc-llm web connect {manifest.id} on its original login host.")
     if manifest.demo or (manifest.profile.scheduler == "slurm" and inside_allocation(manifest)):
         result = asyncio.run(run_tui(manifest))
     else:
@@ -246,10 +255,12 @@ async def run_tui(manifest):
     return 42 if isinstance(result, dict) and result.get("action") == "new_session" else 0
 
 
-def launcher(manager, root, resume_only=False):
+def launcher(manager, root, resume_only=False, ood_url=None):
     from .ui import LauncherApp
     from .profiles import ProfileStore
+    from .compute_web import saved_origin, validate_origin, prepare_browser
     store = ProfileStore(root, APP_ROOT)
+    origin = validate_origin(ood_url) if ood_url else saved_origin(root, APP_ROOT)
     error_message = ""
     while True:
         profile = profile_for(root)
@@ -259,17 +270,25 @@ def launcher(manager, root, resume_only=False):
         status_errors = []
         for session in manager.list():
             try:
-                sessions.append(manager.status(session))
+                status = manager.status(session).model_dump()
+                status["chat_mode"] = "browser" if (Path(session.directory) / "browser.json").exists() else "terminal"
+                sessions.append(status)
             except AppError as exc:
                 status_errors.append(f"Session {session.id[:8]} unavailable: {exc.message}")
         if status_errors:
             error_message = "\n".join(filter(None, [error_message, *status_errors]))
-        choice = LauncherApp(library.list(), sessions, profile, model_service=library, inventory=inventory, error_message=error_message, profile_service=store).run()
+        choice = LauncherApp(library.list(), sessions, profile, model_service=library, inventory=inventory, error_message=error_message, profile_service=store, ood_origin=origin).run()
         error_message = ""
         if not choice:
             return 0
         action = choice.get("action")
         if action == "reload":
+            continue
+        if action == "stop":
+            try:
+                manager.stop(manager.load(choice["session_id"]))
+            except AppError as exc:
+                error_message = exc.message
             continue
         if action == "resume":
             try:
@@ -319,8 +338,15 @@ def launcher(manager, root, resume_only=False):
             settings = InferenceSettings.model_validate(choice.get("settings", model.defaults or {"context": 8192 if model.projector_path else 4096}))
             settings.threads = min(settings.threads, max(1, resources.cpus - 1))
             settings.threads_batch = min(settings.threads_batch, max(1, resources.cpus - 1))
+            origin = choice.get("ood_origin", origin)
+            if choice.get("chat_mode", "browser") == "browser":
+                validate_origin(origin)  # Fail before creating or submitting a job.
             manifest = manager.create(model, resources, profile, settings)
+            if choice.get("chat_mode", "browser") == "browser":
+                prepare_browser(manifest, root, origin)
             manifest = manager.submit(manifest)
+            display(f"Submitted job {manifest.job_id}. You may close the terminal while it queues.\n"
+                    f"Recover the link later: ./hpc-llm attach {manifest.id}", flush=True)
             result = attach(manager, _wait_ready(manager, manifest), return_to_launcher=False)
             if result == 42:
                 continue
@@ -410,7 +436,13 @@ def main(argv=None):
             job_id = current_job_id(manifest.profile)
             if not manifest.demo and (not job_id or (manifest.job_id and job_id != manifest.job_id)):
                 raise AppError("permission", "Supervisor must run in its allocated batch job.")
+            if (Path(manifest.directory) / "browser.json").exists():
+                from .browser import run_native
+                return asyncio.run(run_native(manifest)) or 0
             return asyncio.run(run_supervisor(Path(manifest.directory) / "manifest.json")) or 0
+        if args.command == "web":
+            from .browser import command
+            return command(args, manager, root)
         if args.command == "_tui":
             return asyncio.run(run_tui(manager.load(args.session_id)))
         if args.command == "sessions":
@@ -469,7 +501,7 @@ def main(argv=None):
                 except AppError:
                     display("Previous demo endpoint is unavailable; starting a fresh DEMO session.")
             return attach(manager, _spawn_demo(manager, root))
-        return launcher(manager, root)
+        return launcher(manager, root, ood_url=getattr(args, "ood_url", None))
     except KeyboardInterrupt:
         display("\nStopped waiting. Submitted allocations remain active; use sessions, attach or stop.")
         return 130

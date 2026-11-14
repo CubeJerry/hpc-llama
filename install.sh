@@ -19,7 +19,7 @@ while (($#)); do
       echo 'Usage: bash install.sh [--profile NAME|JSON_PATH] [--backend cuda12|cpu] [--cache-dir MODEL_PATH] [--wheelhouse PATH] [--offline]'
       echo 'Installs managed Python, application packages, llama.cpp and its user-space libraries inside this folder.'
       echo 'Default backend: cuda12. Requires Linux x86_64, curl, tar and sha256sum; glibc >=2.28 for CUDA or >=2.17 for CPU.'
-      echo 'NVIDIA kernel driver and Slurm clients belong to the host. No system Python or CUDA module is used.'
+      echo 'NVIDIA kernel driver, scheduler clients and OpenSSH (for optional reverse-SSH mode) belong to the host. No system Python or CUDA module is used.'
       echo '--offline requires previously cached bootstrap/Python/runtime packages plus wheels/cache.'
       exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
