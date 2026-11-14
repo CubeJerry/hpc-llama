@@ -8,7 +8,7 @@ import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from aiohttp import BasicAuth, ClientSession, web
+from aiohttp import ClientSession, web
 from textual.widgets import Button, Input, Select, Static
 
 from hpc_llm.browser import run_native
@@ -92,15 +92,18 @@ async def lifecycle_check(root):
             base = f'http://127.0.0.1:{access["port"]}'
             async with ClientSession() as client:
                 async with client.get(base) as response:
-                    assert response.status == 401
-                auth = BasicAuth('hpc', password)
-                async with client.get(base + f'/rnode/gpu01.example.edu/{access["port"]}/', auth=auth) as response:
+                    assert response.status == 200 and 'WWW-Authenticate' not in response.headers
+                async with client.post(base + '/_hpc/login', json={'key': password}, headers={'Origin': 'https://ood.example.edu'}) as response:
+                    assert response.status == 200
+                    cookie = next(iter(response.cookies.values()))
+                    assert cookie['secure'] and cookie['httponly']
+                    headers = {'Cookie': cookie.key + '=' + cookie.value}
+
+                async with client.get(base + f'/rnode/gpu01.example.edu/{access["port"]}/', headers=headers) as response:
                     assert response.status == 200 and 'native UI' in await response.text()
-                async with client.post(base + '/v1/chat/completions', auth=auth,
-                                       headers={'Origin': 'https://ood.example.edu'}, json={}) as response:
+                async with client.post(base + '/v1/chat/completions', headers={**headers, 'Origin': 'https://ood.example.edu'}, json={}) as response:
                     assert response.status == 200 and '[DONE]' in await response.text()
-                async with client.post(base + '/v1/chat/completions', auth=auth,
-                                       headers={'Origin': 'https://other.example.edu'}, json={}) as response:
+                async with client.post(base + '/v1/chat/completions', headers={**headers, 'Origin': 'https://other.example.edu'}, json={}) as response:
                     assert response.status == 403
             with redirect_stdout(io.StringIO()) as output:
                 assert attach(manager, manager.load(manifest.id)) == 0

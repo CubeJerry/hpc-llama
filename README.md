@@ -12,7 +12,7 @@ The application uses llama.cpp in a persistent Slurm or PBS allocation. Slurm se
 Run `./hpc-llm` on the login node. Keep the original terminal model installer and
 resource picker, select **Browser · native llama.cpp**, and choose **Start session**.
 The launcher submits one persistent GPU batch job, waits for readiness, prints
-its compute-node Open OnDemand URL and private browser password, and exits.
+its private compute-node Open OnDemand link, and exits.
 You can then close the terminal. There is no login-node dashboard, separate CPU
 job, or reverse SSH tunnel in this flow.
 
@@ -22,7 +22,7 @@ Finish or explicitly stop running sessions before updating their source files.
 Upload the ZIP beside your existing `hpc-llm` directory, then:
 
 ```bash
-unzip -o hpc-llm-web-release.zip
+unzip -o hpc-llm-browser-login-fix.zip
 cd hpc-llm
 bash install.sh
 ./hpc-llm launch --ood-url https://ondemand.hpc.wehi.edu.au
@@ -57,7 +57,15 @@ Ended browser jobs can be replaced by selecting the model and starting a new job
 The compute job binds a free port automatically. Open OnDemand connects directly
 to that node's authenticated web entry point; a small in-job HTTP proxy serves
 llama.cpp's unmodified UI and keeps its backend API key private on loopback.
-Use username `hpc` and the printed password. Leave the native UI API key empty.
+Open the complete private link, including its `#access=...` ending. It signs you
+in automatically, exchanges the key for an HttpOnly session cookie, and removes
+the key from the address bar. No extra username/password popup is used. If your
+terminal truncates the link, the page accepts its access key as a fallback.
+Leave the native UI API key empty. Never enter your cluster password on this page.
+
+This replaces the previous Basic Auth method, which can fail when OOD strips the
+Authorization header. Existing jobs must be stopped and restarted after this
+update; their already-running Python process still contains the old login code.
 No personal SSH forwarding or gateway process on the login node is required.
 OOD must allow `/rnode/COMPUTE_HOST/PORT/`, as with other compute web applications.
 A 404 from OOD still needs the site's proxy route/hostname configuration checked;
@@ -92,6 +100,8 @@ https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-G
 
 Run `PYTHONPATH=src python scripts/check_compute_web.py` for compute-owned HTTP
 lifecycle, authentication, URL publication, shutdown and launcher UI checks.
+`check_browser_login.py` tests auto-login JavaScript and cookie authentication
+through a proxy that strips Authorization and rewrites cookie paths.
 `check_browser.py` tests streaming and prefix handling; `check_mtp_browser.py`
 tests native runtime arguments. Scheduler and model processes are fixtures in
 these checks. Real GPU inference and the Milton OOD route need a cluster smoke test.
@@ -109,11 +119,11 @@ change is required.
 
 ### Install or update
 
-Upload `hpc-llm-web-release.zip`. From the directory containing your existing
+Upload `hpc-llm-browser-login-fix.zip`. From the directory containing your existing
 `hpc-llm` folder (or your chosen retained installation directory):
 
 ```bash
-unzip -o hpc-llm-web-release.zip
+unzip -o hpc-llm-browser-login-fix.zip
 cd hpc-llm
 bash install.sh
 ```

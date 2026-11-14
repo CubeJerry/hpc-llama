@@ -50,10 +50,12 @@ def show_browser(manifest) -> int:
     if manifest.backend_state != 'ready' or not (folder / 'browser-access.json').exists():
         raise AppError('startup', 'The browser job is still queued or loading. Use attach again when ready.')
     access = read_private_json(folder / 'browser-access.json')
+    if access.get('auth') != 'cookie':
+        raise AppError('startup', f'This running job still uses the old sign-in code. Stop it with ./hpc-llm stop {manifest.id}, then start a new browser session in the launcher.')
     password = private_token(folder / 'browser.password')
     display(f'Session: {manifest.id}\nJob: {manifest.job_id}\n'
-            f'Open chat in a browser tab: {access["url"]}\n'
-            f'Username: hpc\nPassword: {password}\n'
+            f'Open this complete private link in a browser tab:\n{access["url"]}#access={password}\n'
+            'The link signs you in automatically. Keep it private; no extra username or password is needed.\n'
             'Leave the llama.cpp API key setting empty.\n'
             'You can close this terminal. The batch job keeps the chat running until its time limit.\n'
             f'Show this link again: ./hpc-llm attach {manifest.id}\n'

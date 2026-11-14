@@ -102,11 +102,11 @@ async def run_native(manifest):
             prefix = f'/rnode/{manifest.node}/{public_port}'
             password = private_token(folder / 'browser.password')
             gateway = web.AppRunner(gateway_app(backend.endpoint, folder / 'browser-backend.json',
-                                               password, prefix, origin), access_log=None, shutdown_timeout=5)
+                                               password, prefix, origin, cookie_auth=True), access_log=None, shutdown_timeout=5)
             await gateway.setup()
             await web.SockSite(gateway, listener).start()
             atomic_json(folder / 'browser-access.json', {'url': origin + prefix + '/',
-                        'node': manifest.node, 'port': public_port})
+                        'node': manifest.node, 'port': public_port, 'auth': 'cookie'})
         manifest.backend_state = 'ready'
         manifest.backend_pid = backend.pid
         manifest.endpoint = backend.endpoint
@@ -150,9 +150,11 @@ HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authoriz
                'authorization', 'cookie', 'origin', 'referer', 'accept-encoding'}
 
 
-def gateway_app(upstream, token_path, password, prefix='', public_origin=None):
+def gateway_app(upstream, token_path, password, prefix='', public_origin=None, *, cookie_auth=False):
     """Authenticated streaming HTTP proxy. No arbitrary target URLs or file paths."""
     app = web.Application(client_max_size=256 * 1024 * 1024)
+    from .browser_login import BrowserLogin
+    login = BrowserLogin(password, prefix, bool(public_origin)) if cookie_auth else None
     async def lifetime(app):
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_connect=10),
                                          auto_decompress=False) as client:
@@ -160,13 +162,6 @@ def gateway_app(upstream, token_path, password, prefix='', public_origin=None):
             yield
     app.cleanup_ctx.append(lifetime)
     async def proxy(request):
-        try:
-            auth = aiohttp.BasicAuth.decode(request.headers.get('Authorization', ''))
-            authorized = auth.login == 'hpc' and hmac.compare_digest(auth.password, password)
-        except ValueError:
-            authorized = False
-        if not authorized:
-            return web.Response(status=401, headers={'WWW-Authenticate': 'Basic realm="HPC llama.cpp", charset="UTF-8"'})
         origin = request.headers.get('Origin')
         expected_origin = public_origin.rstrip('/') if public_origin else f'{request.scheme}://{request.host}'
         if origin and origin != expected_origin:
@@ -176,9 +171,25 @@ def gateway_app(upstream, token_path, password, prefix='', public_origin=None):
         path = request.rel_url.raw_path
         if prefix and path.startswith(prefix + '/'):
             path = path[len(prefix):]
+        elif prefix and path == prefix:
+            path = '/'
         # rnode strips its prefix; node may retain it. Support both explicitly.
         if not path.startswith('/') or path.startswith('//'):
             raise web.HTTPBadRequest()
+        if login is not None:
+            response = await login.gate(request, path)
+            if response is not None:
+                return response
+            if path == '/_hpc/session':
+                return web.json_response({'ok': True}, headers={'Cache-Control': 'no-store'})
+        else:
+            try:
+                auth = aiohttp.BasicAuth.decode(request.headers.get('Authorization', ''))
+                authorized = auth.login == 'hpc' and hmac.compare_digest(auth.password, password)
+            except ValueError:
+                authorized = False
+            if not authorized:
+                return web.Response(status=401, headers={'WWW-Authenticate': 'Basic realm="HPC llama.cpp", charset="UTF-8"'})
         result = None
         try:
             token = read_private_json(token_path)['token']
