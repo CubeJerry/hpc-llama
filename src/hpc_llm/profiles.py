@@ -10,20 +10,23 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import secrets
 
 from pydantic import ValidationError
 
 from .contracts import AppError, SiteProfile
-from .lifecycle import atomic_json
+from .config import AppConfig, load_config, save_config, validation_error, read_mapping
 
 
 class ProfileStore:
-    def __init__(self, state_root: Path, app_root: Path):
+    def __init__(self, state_root: Path, app_root: Path, config_path: Path | None = None):
         self.state_root = Path(state_root).absolute()
         self.app_root = Path(app_root).absolute()
         self.bundled = self.app_root / 'profiles'
         self.user_profiles = self.state_root / 'profiles'
-        self.config_path = self.state_root / 'config.json'
+        self.legacy_config_path = self.state_root / 'config.json'
+        self.config_path = Path(config_path or os.environ.get('HPC_LLM_CONFIG') or self.state_root / 'config.yaml').absolute()
 
     @staticmethod
     def _name(value: str) -> str:
@@ -45,14 +48,58 @@ class ProfileStore:
             raise AppError('validation', f'{path.name} must contain a JSON object.')
         return data
 
+    def document(self, default_profile: str = 'generic') -> AppConfig:
+        if self.config_path.exists() or self.config_path.is_symlink():
+            return load_config(self.config_path)
+        return self._migrate(default_profile)
+
     def config(self) -> dict:
-        if not self.config_path.exists() and not self.config_path.is_symlink():
-            return {}
-        data = self._read(self.config_path)
-        for key in ('profile', 'model_cache'):
-            if key in data and (not isinstance(data[key], str) or not data[key].strip()):
-                raise AppError('validation', f'Configuration {key} must be a nonempty string.')
-        return data
+        document = self.document()
+        result = {'profile': document.selected_profile, 'state_directory': document.state_directory}
+        if document.model_cache:
+            result['model_cache'] = document.model_cache
+        return result
+
+    def _migrate(self, default_profile: str) -> AppConfig:
+        legacy = self._read(self.legacy_config_path) if self.legacy_config_path.exists() else {}
+        unknown = set(legacy) - {'profile', 'model_cache'}
+        if unknown:
+            raise AppError('validation', 'Legacy config.json has unknown keys. Preserve the file and move its profile/model_cache settings into config.yaml manually.')
+        names = set()
+        for directory in (self.bundled, self.user_profiles):
+            if directory.is_symlink():
+                raise AppError('permission', 'Profile directories cannot be symbolic links.')
+            if directory.exists():
+                names.update(self._name(path.stem) for path in directory.glob('*.json'))
+        profiles = {name: self._legacy_raw(name) for name in sorted(names)}
+        if not profiles:
+            profiles['generic'] = SiteProfile()
+        selected = legacy.get('profile', default_profile)
+        if selected not in profiles:
+            raise AppError('validation', 'The selected legacy profile is missing; restore its JSON file before migration.')
+        try:
+            document = AppConfig(selected_profile=selected, model_cache=legacy.get('model_cache', ''), profiles=profiles)
+        except ValidationError as exc:
+            raise validation_error(exc, 'legacy configuration') from exc
+        originals = ([self.legacy_config_path] if self.legacy_config_path.exists() else [])
+        originals += list(self.user_profiles.glob('*.json')) if self.user_profiles.exists() else []
+        if originals:
+            backup = self.state_root / 'migration-backup-v1'
+            if backup.exists() or backup.is_symlink():
+                # Never overwrite an earlier rollback snapshot.
+                backup = self.state_root / ('migration-backup-v1-' + secrets.token_hex(4))
+            backup.mkdir(parents=True, mode=0o700)
+            for path in originals:
+                self._read(path)
+                relative = Path('profiles') / path.name if path.parent == self.user_profiles else Path(path.name)
+                target = backup / relative
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                shutil.copyfile(path, target)
+                target.chmod(0o600)
+        # Originals stay intact. Models, defaults and session snapshots live in
+        # other files and are deliberately never touched during migration.
+        save_config(self.config_path, document)
+        return document
 
     def _path(self, value: str) -> Path:
         if not isinstance(value, str) or not value.strip() or any(ord(c) < 32 for c in value):
@@ -73,19 +120,17 @@ class ProfileStore:
                 raise AppError('validation', 'Profile name must match its filename.')
         if not expected_name and 'name' not in data:
             raise AppError('validation', 'Imported profiles must declare a valid name.')
-        # Legacy module setup is superseded by the self-contained runtime.
-        data.update(modules=[], module_init='')
         try:
             profile = SiteProfile.model_validate(data)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise AppError('validation', 'Invalid site profile. Check scheduler, resources and preset values.') from exc
+            raise validation_error(exc, 'site profile') from exc
         self._name(profile.name)
         for name in profile.resource_presets:
             if not name.strip() or len(name) > 100 or any(ord(c) < 32 for c in name):
                 raise AppError('validation', 'Resource preset names must be 1–100 printable characters.')
         return profile
 
-    def _raw(self, name_or_path: str | Path) -> SiteProfile:
+    def _legacy_raw(self, name_or_path: str | Path) -> SiteProfile:
         selector = str(name_or_path)
         if selector.endswith('.json') or '/' in selector or '\\' in selector:
             return self._parse(self._read(self._path(selector)))
@@ -107,14 +152,19 @@ class ProfileStore:
             raise AppError('validation', f'Unknown site profile: {name}. Choose an installed profile or import a JSON file.')
         return self._parse(data, name)
 
+    def _raw(self, name_or_path: str | Path) -> SiteProfile:
+        selector = str(name_or_path)
+        if selector.endswith(('.json', '.yaml', '.yml')) or '/' in selector or '\\' in selector:
+            path = self._path(selector)
+            return self._parse(self._read(path) if path.suffix == '.json' else read_mapping(path))
+        name = self._name(selector)
+        profile = self.document().profiles.get(name)
+        if profile is None:
+            raise AppError('validation', f'Unknown site profile: {name}. Choose a configured profile or import a profile file.')
+        return profile.model_copy(deep=True)
+
     def list(self) -> list[SiteProfile]:
-        names = set()
-        for directory in (self.bundled, self.user_profiles):
-            if directory.is_symlink():
-                raise AppError('permission', 'Profile directories cannot be symbolic links.')
-            if directory.exists():
-                names.update(self._name(path.stem) for path in directory.glob('*.json'))
-        return [self._raw(name) for name in sorted(names)]
+        return [profile.model_copy(deep=True) for _, profile in sorted(self.document().profiles.items())]
 
     def _cache(self, value: str) -> Path:
         path = self._path(value)
@@ -128,7 +178,7 @@ class ProfileStore:
 
     def load(self, name_or_path: str | Path | None = None) -> SiteProfile:
         config = self.config()
-        profile = self._raw(name_or_path or config.get('profile', 'wehi'))
+        profile = self._raw(name_or_path or config.get('profile', 'generic'))
         return self._effective(profile, config)
 
     def _effective(self, profile: SiteProfile, config: dict) -> SiteProfile:
@@ -137,59 +187,42 @@ class ProfileStore:
         profile.model_cache = str(self._cache(cache))
         runtime = os.environ.get('HPC_LLM_RUNTIME') or profile.runtime
         profile.runtime = str(self._path(runtime)) if runtime else str(self.app_root / 'runtime' / 'bin' / 'llama-server')
+        profile.workspaces = [str(self._path(value)) for value in profile.workspaces]
         return profile
 
     def save(self, profile: SiteProfile, select: bool = True, *, model_cache: str | Path | None = None) -> SiteProfile:
         raw = self._parse(profile.model_dump() if isinstance(profile, SiteProfile) else profile)
-        config = self.config()  # Do not overwrite a malformed existing config.
+        document = self.document()
+        config = self.config()
         if model_cache is not None:
             self._cache(str(model_cache))
+            document.model_cache = str(model_cache)
             config['model_cache'] = str(model_cache)
         effective = self._effective(raw, config) if select else raw
-        atomic_json(self.user_profiles / f'{raw.name}.json', raw.model_dump())
+        document.profiles[raw.name] = raw
         if select:
-            config['profile'] = raw.name
-        if select or model_cache is not None:
-            atomic_json(self.config_path, config)
+            document.selected_profile = raw.name
+        save_config(self.config_path, document)
         return effective
 
     def select(self, name_or_path: str | Path) -> SiteProfile:
         raw = self._raw(name_or_path)
-        selector = str(name_or_path)
-        if selector.endswith('.json') or '/' in selector or '\\' in selector:
-            return self.save(raw, select=True)
-        # Validate cache creation before making selection persistent.
-        resolved = self.load(raw.name)
-        config = self.config()
-        config['profile'] = raw.name
-        atomic_json(self.config_path, config)
-        return resolved
+        return self.save(raw, select=True)
 
     def set_cache(self, path: str | Path) -> Path:
-        config = self.config()
         resolved = self._cache(str(path))
-        config['model_cache'] = str(path)
-        atomic_json(self.config_path, config)
+        document = self.document()
+        document.model_cache = str(path)
+        save_config(self.config_path, document)
         return resolved
 
     def configure_install(self, profile: str | Path | None = None, cache: str | Path | None = None) -> SiteProfile:
-        """Validate requested installation settings before writing one config update."""
-        config = self.config()
-        selector = str(profile) if profile is not None else config.get('profile', 'wehi')
-        raw = self._raw(selector)
-        if cache is not None:
-            self._cache(str(cache))
-            config['model_cache'] = str(cache)
-        effective = self._effective(raw, config)
-        if selector.endswith('.json') or '/' in selector or '\\' in selector:
-            atomic_json(self.user_profiles / f'{raw.name}.json', raw.model_dump())
-        config['profile'] = raw.name
-        atomic_json(self.config_path, config)
-        return effective
+        """Validate requested settings before writing one canonical YAML update."""
+        document = self.document()
+        raw = self._raw(profile or document.selected_profile)
+        return self.save(raw, select=True, model_cache=cache)
 
-    def initialize(self, default_profile: str = 'wehi') -> SiteProfile:
+    def initialize(self, default_profile: str = 'generic') -> SiteProfile:
         """Installer entry point: preserve existing selection and cache settings."""
-        config = self.config()
-        if 'profile' not in config:
-            return self.select(default_profile)
+        self.document(default_profile)
         return self.load()

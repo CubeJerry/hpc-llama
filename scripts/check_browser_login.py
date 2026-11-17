@@ -105,7 +105,20 @@ async def main():
                     async with client.get(root + '_hpc/session') as r:
                         assert r.status == 200
                     async with client.get(root) as r:
-                        assert r.status == 200 and await r.text() == 'native chat'
+                        body = await r.text()
+                        assert r.status == 200 and 'native chat' in body
+                        assert prefix + '/_hpc/browser-init.js' in body
+                    async with client.get(root + '_hpc/browser-init.js') as r:
+                        assert r.status == 200
+                        initializer = await r.text()
+                    harness = '''const vm=require('node:vm'), assert=require('node:assert/strict');
+const script=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+for(const hash of ['#access=secret','#/chat/saved']) {
+ let cleaned=false;
+ vm.runInNewContext(script,{URLSearchParams,location:{hash,pathname:'/chat/',search:'?a=1'},history:{state:null,replaceState:(state,title,url)=>{assert.equal(url,'/chat/?a=1');cleaned=true;}}});
+ assert.equal(cleaned,hash.startsWith('#access='));
+}'''
+                    subprocess.run(['node','-e',harness], input=json.dumps(initializer),text=True,check=True)
                     async with client.post(root + 'v1/chat/completions', json={}, headers={'Origin':'https://ood.example.edu'}) as r:
                         assert r.status == 200
                     assert upstream_calls == ['/', '/v1/chat/completions']

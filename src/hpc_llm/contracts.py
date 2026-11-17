@@ -6,6 +6,8 @@ import math
 import time
 import uuid
 from typing import Any, Literal
+from urllib.parse import urlsplit
+from string import Formatter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -18,22 +20,43 @@ class Record(BaseModel):
 
 
 class ResourceRequest(Record):
-    partition: str = "gpuq"
-    gpu_type: str = "A30"
-    gpu_count: int = Field(default=1, ge=1, le=8)
-    cpus: int = Field(default=4, ge=2, le=128)
-    memory_gb: int = Field(default=16, ge=4, le=2048)
+    partition: str = "gpu"
+    gpu_type: str = ""
+    gpu_count: int = Field(default=1, ge=1, le=1, strict=True)
+    cpus: int = Field(default=4, ge=1, le=128, strict=True)
+    memory_gb: int = Field(default=16, ge=1, le=2048, strict=True)
     walltime: str = "01:00:00"
     account: str = ""
     qos: str = ""
     constraint: str = ""
 
-    @field_validator("partition", "gpu_type", "account", "qos", "constraint")
+    @field_validator("gpu_count", mode="before")
+    @classmethod
+    def single_gpu(cls, value: int) -> int:
+        if value != 1:
+            raise ValueError("This runtime supports exactly one GPU per session; set gpu_count: 1")
+        return value
+
+    @field_validator("partition")
+    @classmethod
+    def required_partition(cls, value: str) -> str:
+        if not value:
+            raise ValueError("Set a nonempty partition or queue name")
+        return value
+
+    @field_validator("partition", "gpu_type", "account", "qos")
     @classmethod
     def safe_field(cls, v: str) -> str:
-        if not re.fullmatch(r"[A-Za-z0-9_.+-]*", v):
-            raise ValueError("Use letters, numbers, dot, underscore, plus or hyphen only")
+        if not re.fullmatch(r"[A-Za-z0-9_.+-]*", v) or v.startswith("-"):
+            raise ValueError("Use a scheduler name without spaces or shell syntax; values must not start with a hyphen")
         return v
+
+    @field_validator("constraint")
+    @classmethod
+    def safe_constraint(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_.+&|!()\[\]*:-]*", value) or value.startswith("-"):
+            raise ValueError("Use a Slurm feature expression with letters/numbers and & | ! ( ) [ ] * : + - only")
+        return value
 
     @field_validator("walltime")
     @classmethod
@@ -45,8 +68,72 @@ class ResourceRequest(Record):
         return v
 
 
+class ConnectionConfig(Record):
+    mode: Literal["ood", "local-forward", "reverse-ssh"] = "ood"
+    ood_origin: str = ""
+    ood_path: str = "/rnode/{node}/{port}"
+    ssh_host: str = "{node}"
+    jump_host: str = ""
+    relay_host: str = ""
+    relay_jump_host: str = ""
+    local_port: int = Field(default=8765, ge=1024, le=65535)
+    relay_port: int = Field(default=0, ge=0, le=65535)
+
+    @field_validator("ood_origin")
+    @classmethod
+    def valid_origin(cls, value: str) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/") or any(ord(c) < 33 for c in value):
+            raise ValueError("OOD origin must be an HTTPS origin such as https://ondemand.example.edu")
+        try:
+            parsed.port
+        except ValueError:
+            raise ValueError("OOD origin has an invalid port") from None
+        return value.rstrip("/")
+
+    @field_validator("ood_path")
+    @classmethod
+    def valid_route(cls, value: str) -> str:
+        if not value.startswith("/") or value.startswith("//") or not re.fullmatch(r"[A-Za-z0-9_./{}-]+", value) or ".." in value:
+            raise ValueError("OOD path must be an absolute proxy route with {node} and {port}")
+        try:
+            parsed = list(Formatter().parse(value))
+            fields = [field for _, field, _, _ in parsed if field is not None]
+            if sorted(fields) != ["node", "port"] or any(spec or conversion for _, _, spec, conversion in parsed):
+                raise ValueError()
+        except (ValueError, KeyError, IndexError):
+            raise ValueError("OOD path must contain exactly {node} and {port}, without format modifiers") from None
+        return value.rstrip("/")
+
+    @field_validator("ssh_host", "jump_host", "relay_host", "relay_jump_host")
+    @classmethod
+    def safe_host(cls, value: str) -> str:
+        checked = value.replace("{node}", "node")
+        if value and (not re.fullmatch(r"(?:[A-Za-z0-9_][A-Za-z0-9_.-]*@)?[A-Za-z0-9_][A-Za-z0-9_.-]*", checked) or len(value) > 300):
+            raise ValueError("SSH destination must be one host/alias, optionally user@host; configure ports in SSH config")
+        return value
+
+    @field_validator("relay_port")
+    @classmethod
+    def relay_unprivileged(cls, value: int) -> int:
+        if 0 < value < 1024:
+            raise ValueError("Relay port must be zero (choose automatically) or 1024–65535")
+        return value
+
+
+class ToolConfig(Record):
+    enabled: bool = True
+    allow_writes: bool = False
+    max_file_bytes: int = Field(default=256 * 1024, ge=1024, le=2 * 1024 * 1024)
+    max_entries: int = Field(default=500, ge=1, le=5000)
+    max_tool_calls: int = Field(default=8, ge=1, le=16)
+    timeout_seconds: int = Field(default=120, ge=5, le=300)
+
+
 class SiteProfile(Record):
-    name: str = "wehi"
+    name: str = "generic"
     description: str = ""
     scheduler: Literal["slurm", "pbs"] = "slurm"
     resource_presets: dict[str, ResourceRequest] = Field(default_factory=dict)
@@ -58,6 +145,54 @@ class SiteProfile(Record):
     module_init: str = ""
     model_cache: str = ""
     runtime: str = ""
+    default_preset: str = ""
+    connection: ConnectionConfig = Field(default_factory=ConnectionConfig)
+    workspaces: list[str] = Field(default_factory=list)
+    tools: ToolConfig = Field(default_factory=ToolConfig)
+    runtime_environment: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("modules")
+    @classmethod
+    def safe_modules(cls, values: list[str]) -> list[str]:
+        if len(values) > 32 or any(not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_./+-]{0,199}", value) for value in values):
+            raise ValueError("Module names must be literal names such as cuda/12.4, without shell commands")
+        return values
+
+    @field_validator("module_init")
+    @classmethod
+    def no_shell_setup(cls, value: str) -> str:
+        if value:
+            raise ValueError("module_init shell setup is unsupported; use modules and runtime_environment, or an explicit runtime wrapper executable")
+        return value
+
+    @field_validator("runtime_environment")
+    @classmethod
+    def safe_environment(cls, values: dict[str, str]) -> dict[str, str]:
+        for key, value in values.items():
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or key.startswith(("SBATCH_", "SRUN_", "SLURM_", "PBS_", "LLAMA_", "GGML_", "OMP_", "MKL_", "OPENBLAS_", "VECLIB_", "HPC_LLM_")) or key in {"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"}:
+                raise ValueError("Environment keys must be identifiers; scheduler overrides, shell startup hooks and managed runtime overrides are unsupported")
+            if len(value) > 8192 or any(ord(c) < 32 or ord(c) == 127 for c in value):
+                raise ValueError("Environment values must be printable literals of at most 8192 characters")
+        return values
+
+    @field_validator("runtime", "model_cache", "workspaces")
+    @classmethod
+    def safe_paths(cls, value):
+        for path in value if isinstance(value, list) else [value]:
+            if any(ord(c) < 32 or ord(c) == 127 for c in path):
+                raise ValueError("Paths cannot contain control characters")
+        return value
+
+    @model_validator(mode="after")
+    def valid_default_preset(self):
+        if self.default_preset and self.default_preset not in self.resource_presets:
+            raise ValueError("default_preset must name one of resource_presets")
+        for name in self.resource_presets:
+            if not name.strip() or len(name) > 100 or any(ord(c) < 32 or ord(c) == 127 for c in name):
+                raise ValueError("Resource preset names must be 1–100 printable characters")
+        if len(self.workspaces) > 32 or any(not value.strip() for value in self.workspaces):
+            raise ValueError("Configure at most 32 nonempty workspace paths")
+        return self
 
     @field_validator("pbs_gpu_resource", "pbs_gpu_type_resource")
     @classmethod

@@ -26,7 +26,8 @@ def display(*values, **kwargs):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(prog="hpc-llm", description="Local LLM sessions inside persistent Slurm or PBS allocations")
-    parser.add_argument("--state-root", type=Path, default=Path(os.environ.get("HPC_LLM_HOME", APP_ROOT / "state")))
+    parser.add_argument("--state-root", type=Path, help="Session and model-registration state directory; overrides config.yaml")
+    parser.add_argument("--config", type=Path, help="Versioned config.yaml (default: state/config.yaml or HPC_LLM_CONFIG)")
     parser.add_argument("--demo", action="store_true", help="CPU-only simulated backend; no Slurm, internet or model download")
     parser.add_argument("--check", action="store_true", help="Check installed application without allocating or networking")
     sub = parser.add_subparsers(dest="command")
@@ -34,6 +35,13 @@ def parse_args(argv=None):
     add_arguments(sub)
     launch = sub.add_parser("launch", help="Select a model/resources in the TUI, then open native browser chat")
     launch.add_argument("--ood-url", help="Open OnDemand HTTPS origin; remembered for future launches")
+    launch.add_argument("--preset", help="Start from a named resource preset; changes apply only to this session")
+    launch.add_argument("--workspace", help="Directory for cluster files created in Files & tools")
+    launch.add_argument("--connection", choices=["ood", "local-forward", "reverse-ssh"])
+    for field in ("partition", "gpu-type", "walltime", "account", "qos", "constraint", "ood-path", "ssh-host", "jump-host", "relay-host", "relay-jump-host"):
+        launch.add_argument("--" + field)
+    for field in ("gpu-count", "cpus", "memory-gb", "local-port", "relay-port"):
+        launch.add_argument("--" + field, type=int)
     sub.add_parser("doctor")
     sub.add_parser("sessions")
     attach = sub.add_parser("attach"); attach.add_argument("session_id", nargs="?")
@@ -93,7 +101,7 @@ def profiles_command(args, root):
     store = ProfileStore(root, APP_ROOT)
     action = args.profile_action
     if action in (None, "list"):
-        active = store.config().get("profile", "wehi")
+        active = store.config().get("profile", "generic")
         for profile in store.list():
             display(f"{'*' if profile.name == active else ' '} {profile.name} ({profile.scheduler}) — {profile.description}")
         return 0
@@ -142,7 +150,7 @@ def _library(root):
 
 def check(root):
     from . import __version__
-    modules = ["aiohttp", "textual", "pydantic", "pypdf", "python-docx", "openpyxl", "pillow", "beautifulsoup4", "ddgs"]
+    modules = ["aiohttp", "textual", "pydantic", "pypdf", "python-docx", "openpyxl", "pillow", "beautifulsoup4", "ddgs", "PyYAML"]
     display(f"HPC LLM {__version__} | Python {sys.version.split()[0]}")
     for module in modules:
         display(f"  {module}: {importlib.metadata.version(module)}")
@@ -255,15 +263,25 @@ async def run_tui(manifest):
     return 42 if isinstance(result, dict) and result.get("action") == "new_session" else 0
 
 
-def launcher(manager, root, resume_only=False, ood_url=None):
+def launcher(manager, root, resume_only=False, ood_url=None, options=None):
     from .ui import LauncherApp
     from .profiles import ProfileStore
+    from .config import resolve_resources
+    from .contracts import ConnectionConfig
     from .compute_web import saved_origin, validate_origin, prepare_browser
     store = ProfileStore(root, APP_ROOT)
     origin = validate_origin(ood_url) if ood_url else saved_origin(root, APP_ROOT)
+    resource_overrides = {key: getattr(options, key) for key in ResourceRequest.model_fields if getattr(options, key, None) is not None}
+    connection_overrides = {key: getattr(options, key) for key in ConnectionConfig.model_fields if getattr(options, key, None) is not None}
+    if getattr(options, "connection", None):
+        connection_overrides["mode"] = options.connection
+    if ood_url:
+        connection_overrides["ood_origin"] = origin
     error_message = ""
     while True:
         profile = profile_for(root)
+        profile.resources = resolve_resources(profile, preset=getattr(options, "preset", None), cli=resource_overrides)
+        profile.connection = ConnectionConfig(**(profile.connection.model_dump() | connection_overrides))
         library = _library(root)
         inventory = manager.inventory(profile)
         sessions = []
@@ -277,7 +295,8 @@ def launcher(manager, root, resume_only=False, ood_url=None):
                 status_errors.append(f"Session {session.id[:8]} unavailable: {exc.message}")
         if status_errors:
             error_message = "\n".join(filter(None, [error_message, *status_errors]))
-        choice = LauncherApp(library.list(), sessions, profile, model_service=library, inventory=inventory, error_message=error_message, profile_service=store, ood_origin=origin).run()
+        workspace = getattr(options, "workspace", None) or next(iter(profile.workspaces), str(APP_ROOT / "workspace"))
+        choice = LauncherApp(library.list(), sessions, profile, model_service=library, inventory=inventory, error_message=error_message, profile_service=store, ood_origin=profile.connection.ood_origin or origin, workspace=workspace, resource_overrides=resource_overrides, connection_overrides=connection_overrides).run()
         error_message = ""
         if not choice:
             return 0
@@ -334,16 +353,22 @@ def launcher(manager, root, resume_only=False, ood_url=None):
             model = next((m for m in library.list() if m.id == choice["model_id"]), None)
             if not model:
                 raise AppError("validation", "Selected model is no longer registered.")
-            resources = ResourceRequest.model_validate(choice.get("resources", profile.resources.model_dump()))
+            resources = resolve_resources(profile, session=choice.get("resources"), cli=resource_overrides)
             settings = InferenceSettings.model_validate(choice.get("settings", model.defaults or {"context": 8192 if model.projector_path else 4096}))
             settings.threads = min(settings.threads, max(1, resources.cpus - 1))
             settings.threads_batch = min(settings.threads_batch, max(1, resources.cpus - 1))
             origin = choice.get("ood_origin", origin)
-            if choice.get("chat_mode", "browser") == "browser":
-                validate_origin(origin)  # Fail before creating or submitting a job.
+            profile.connection = ConnectionConfig(**(choice.get("connection", profile.connection.model_dump()) | connection_overrides))
+            if profile.connection.mode == "ood":
+                validate_origin(origin)
+            from .browser_files import select_workspace
+            try:
+                selected_workspace = select_workspace(profile, APP_ROOT, choice.get("workspace", workspace))
+            except (AppError, ValueError, OSError) as exc:
+                error_message = str(exc)
+                continue
             manifest = manager.create(model, resources, profile, settings)
-            if choice.get("chat_mode", "browser") == "browser":
-                prepare_browser(manifest, root, origin)
+            prepare_browser(manifest, root, origin if profile.connection.mode == "ood" else None, workspace=str(selected_workspace))
             manifest = manager.submit(manifest)
             display(f"Submitted job {manifest.job_id}. You may close the terminal while it queues.\n"
                     f"Recover the link later: ./hpc-llm attach {manifest.id}", flush=True)
@@ -419,9 +444,33 @@ def configure_terminal():
 def main(argv=None):
     configure_terminal()
     args = parse_args(argv)
-    root = args.state_root.expanduser().resolve()
     os.umask(0o077)
     try:
+        root = Path(args.state_root or os.environ.get("HPC_LLM_HOME") or APP_ROOT / "state").expanduser().absolute()
+        config_path = args.config or os.environ.get("HPC_LLM_CONFIG")
+        snapshot_command = args.command in {"_supervise", "_supervisor", "_tui", "sessions", "attach", "stop"} and args.state_root is not None and args.config is None
+        if snapshot_command:
+            document = None
+        elif config_path:
+            config_path = Path(os.path.expandvars(str(config_path))).expanduser().absolute()
+            from .config import load_config
+            document = load_config(config_path)
+            os.environ["HPC_LLM_CONFIG"] = str(config_path)
+        else:
+            from .profiles import ProfileStore
+            store = ProfileStore(root, APP_ROOT)
+            document = store.document()
+            config_path = store.config_path
+        if args.state_root is None and document is not None and document.state_directory:
+            state_value = os.path.expandvars(os.path.expanduser(document.state_directory))
+            if "$" in state_value:
+                raise AppError("validation", "state_directory contains an unset environment variable")
+            root = Path(state_value)
+            if not root.is_absolute():
+                root = APP_ROOT / root
+            root = root.absolute()
+            os.environ["HPC_LLM_CONFIG"] = str(config_path)
+        args.state_root = root
         if args.check:
             return check(root)
         if args.command == "doctor":
@@ -463,7 +512,7 @@ def main(argv=None):
                 asyncio.run(stop_demo())
             else:
                 manager.stop(manifest)
-            display("Session stopped. Saved chats and exports are retained.")
+            display("GPU session stopped. Cluster files are retained; native chat history remains in this browser's storage.")
             return 0
         if args.command == "attach":
             if args.session_id:
@@ -501,7 +550,7 @@ def main(argv=None):
                 except AppError:
                     display("Previous demo endpoint is unavailable; starting a fresh DEMO session.")
             return attach(manager, _spawn_demo(manager, root))
-        return launcher(manager, root, ood_url=getattr(args, "ood_url", None))
+        return launcher(manager, root, ood_url=getattr(args, "ood_url", None), options=args)
     except KeyboardInterrupt:
         display("\nStopped waiting. Submitted allocations remain active; use sessions, attach or stop.")
         return 130

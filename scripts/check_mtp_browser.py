@@ -48,8 +48,8 @@ async def check_transport(transport, fail=False):
         (folder / 'logs').mkdir(parents=True)
         manifest = SessionManifest(owner=getpass.getuser(), directory=str(folder),
                                    model=ModelSpec(name='fixture', path='/models/fixture.gguf'))
-        atomic_json(folder / 'browser.json', {'transport': transport, 'ssh_host': 'login.example',
-                                            'gateway_host': 'login.example', 'tunnel_port': 25000})
+        atomic_json(folder / 'browser.json', {'transport': 'compute', 'connection': {
+            'mode': transport, 'ood_origin': 'https://ood.example', 'relay_host': 'relay02.example'}})
         calls, closed, observed = [], [], []
         class BackendFixture:
             def __init__(self, session):
@@ -62,6 +62,7 @@ async def check_transport(transport, fail=False):
                     return web.Response(text='<html>Native UI fixture</html>', content_type='text/html')
                 app = web.Application()
                 app.router.add_get('/', home)
+                app.router.add_get('/v1/models', home)
                 self.runner = web.AppRunner(app)
                 await self.runner.setup()
                 site = web.TCPSite(self.runner, '127.0.0.1', 0)
@@ -83,8 +84,15 @@ async def check_transport(transport, fail=False):
             def kill(self):
                 self.returncode = -9
         async def subprocess_fixture(*argv, **kwargs):
-            calls.append(argv)
-            return ProcessFixture()
+            raise AssertionError('Unexpected direct subprocess; reverse tunnel fixture owns its process')
+        class ReverseFixture:
+            def __init__(self, options, port, log_path):
+                self.process = ProcessFixture()
+                calls.append((options, port))
+            async def start(self, password):
+                return 25000
+            async def close(self):
+                self.process.terminate()
         loop = asyncio.get_running_loop()
         timers = []
         def signal_fixture(sig, callback):
@@ -92,6 +100,7 @@ async def check_transport(transport, fail=False):
         try:
             with patch('hpc_llm.backend.Backend', BackendFixture), \
                  patch('hpc_llm.browser.asyncio.create_subprocess_exec', subprocess_fixture), \
+                 patch('hpc_llm.connections.ReverseTunnel', ReverseFixture), \
                  patch.object(loop, 'add_signal_handler', signal_fixture):
                 try:
                     await run_native(manifest)
@@ -103,25 +112,23 @@ async def check_transport(transport, fail=False):
             for timer in timers:
                 timer.cancel()
         assert closed == [True]
-        assert observed[0] == (True, '0.0.0.0' if transport == 'direct' else '127.0.0.1')
+        assert observed[0] == (True, '127.0.0.1')
         assert not (folder / 'browser-backend.json').exists(), 'Backend credential was not cleaned up'
         assert read_private_json(folder / 'manifest.json')['backend_state'] == ('failed' if fail else 'stopped')
-        if transport == 'direct':
-            assert not calls, 'Direct transport unexpectedly invoked SSH'
-            assert observed[1]['endpoint'].startswith('http://' + manifest.node + ':')
+        assert observed[1]['endpoint'].startswith('http://127.0.0.1:')
+        if transport != 'reverse-ssh':
+            assert not calls, 'OOD/local transport unexpectedly invoked compute SSH'
         else:
-            assert len(calls) == 2
-            assert calls[0][-1] == 'true'
-            assert '-R' in calls[1] and 'ExitOnForwardFailure=yes' in calls[1]
-            assert observed[1]['endpoint'] == 'http://127.0.0.1:25000'
+            assert len(calls) == 1 and calls[0][0]['relay_host'] == 'relay02.example'
 
 
 async def main():
     check_mtp()
-    await check_transport('direct')
+    await check_transport('ood')
+    await check_transport('local-forward')
     await check_transport('reverse-ssh')
-    await check_transport('direct', fail=True)
-    print('MTP selection, direct/reverse transport lifecycle, readiness, failure and credential cleanup passed.')
+    await check_transport('ood', fail=True)
+    print('MTP selection, OOD/local/reverse transport lifecycle, readiness, failure and credential cleanup passed.')
 
 
 if __name__ == '__main__':

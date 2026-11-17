@@ -28,7 +28,7 @@ from textual.widgets import (
     TabbedContent, TabPane, TextArea, Tree,
 )
 
-from .contracts import InferenceSettings, ResourceRequest, SiteProfile, session_can_resume, session_is_ended
+from .contracts import ConnectionConfig, InferenceSettings, ResourceRequest, SiteProfile, session_can_resume, session_is_ended
 from .portable_scrollbar import PortableScrollBarRender
 from .vram import estimate_vram
 
@@ -1696,12 +1696,13 @@ class ResourceDialog(Dialog):
     ResourceDialog SelectCurrent Static#label { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
     """
 
-    def __init__(self, resources: dict, inventory: dict | None = None, profile: dict | None = None):
+    def __init__(self, resources: dict, inventory: dict | None = None, profile: dict | None = None, overrides: dict | None = None):
         super().__init__()
         self.resources = resources
         self.inventory = inventory or {}
         self.profile = data(profile) or {}
         self.presets = self.profile.get("resource_presets", {})
+        self.overrides = overrides or {}
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -1717,7 +1718,7 @@ class ResourceDialog(Dialog):
                     yield plain("Using profile defaults; live inventory unavailable. You can edit the request below.", classes="help")
                 for name, title, kind in RESOURCE_FIELDS:
                     yield Label("Queue" if name == "partition" and self.profile.get("scheduler") == "pbs" else title)
-                    yield Input(str(self.resources.get(name, "")), id=f"resource-{name}", type="integer" if kind is int else "text")
+                    yield Input(str(self.resources.get(name, "")), id=f"resource-{name}", type="integer" if kind is int else "text", disabled=name in self.overrides)
             yield plain("", id="resource-error", classes="error")
             with Horizontal(classes="actions"):
                 yield Button("Reset", id="resource-reset")
@@ -1728,7 +1729,7 @@ class ResourceDialog(Dialog):
     def choose_preset(self, event: Select.Changed) -> None:
         if event.value in self.presets:
             for name, _, _ in RESOURCE_FIELDS:
-                self.query_one(f"#resource-{name}", Input).value = str(data(self.presets[event.value]).get(name, ""))
+                self.query_one(f"#resource-{name}", Input).value = str(self.overrides.get(name, data(self.presets[event.value]).get(name, "")))
 
     @on(Button.Pressed)
     def answer(self, event: Button.Pressed) -> None:
@@ -1737,7 +1738,7 @@ class ResourceDialog(Dialog):
         elif event.button.id == "resource-reset":
             defaults = self.profile.get("resources") or ResourceRequest().model_dump()
             for name, _, _ in RESOURCE_FIELDS:
-                self.query_one(f"#resource-{name}", Input).value = str(defaults[name])
+                self.query_one(f"#resource-{name}", Input).value = str(self.overrides.get(name, defaults[name]))
         elif event.button.id == "resource-apply":
             try:
                 self.dismiss(ResourceRequest(**{name: kind(self.query_one(f"#resource-{name}", Input).value) for name, _, kind in RESOURCE_FIELDS}).model_dump())
@@ -2158,7 +2159,7 @@ class LauncherApp(App):
     #launch .help { color: $text-muted; }
     """ + PORTABLE_BORDERS_CSS
 
-    def __init__(self, models, sessions, profile, model_service=None, inventory=None, error_message: str = "", profile_service=None, ood_origin: str = ""):
+    def __init__(self, models, sessions, profile, model_service=None, inventory=None, error_message: str = "", profile_service=None, ood_origin: str = "", workspace: str = "", resource_overrides: dict | None = None, connection_overrides: dict | None = None):
         super().__init__()
         self.models = [data(m) for m in models]
         self.sessions = sorted([data(s) for s in sessions], key=lambda session: session.get("created_at", 0), reverse=True)
@@ -2171,7 +2172,11 @@ class LauncherApp(App):
         self.inventory = inventory or {}
         self.error_message = error_message
         self.profile_service = profile_service
-        self.ood_origin = ood_origin
+        self.ood_origin = ood_origin or self.profile.get("connection", {}).get("ood_origin", "")
+        self.connection = self.profile.get("connection", ConnectionConfig().model_dump())
+        self.workspace = workspace or next(iter(self.profile.get("workspaces", [])), str(Path(__file__).resolve().parents[2] / "workspace"))
+        self.resource_overrides = resource_overrides or {}
+        self.connection_overrides = connection_overrides or {}
 
     def on_mount(self) -> None:
         self.limit_body_height(self.size.height)
@@ -2218,16 +2223,25 @@ class LauncherApp(App):
                     yield Label("Time limit (HH:MM:SS)", id="launch-time-label")
                 with Horizontal(id="launch-resource-row"):
                     yield Button(self.resource_summary(), id="resources")
-                    yield Input(self.resources["walltime"], id="launch-walltime", tooltip="For this new allocation only. Use HH:MM:SS or D-HH:MM:SS; the saved profile stays unchanged.")
-                yield Label("3  Chat interface")
-                yield Select([("Browser · native llama.cpp", "browser"), ("Terminal · legacy chat and file tools", "terminal")], value="browser", allow_blank=False, id="launch-chat-mode")
+                    yield Input(self.resources["walltime"], id="launch-walltime", disabled="walltime" in self.resource_overrides, tooltip="For this new allocation only. Use HH:MM:SS or D-HH:MM:SS; the saved profile stays unchanged.")
+                if self.resource_overrides:
+                    yield plain("Command-line overrides: " + ", ".join(f"{key}={value}" for key, value in self.resource_overrides.items()), classes="help")
+                yield Label("3  Browser connection")
+                yield Select([("Open OnDemand proxy", "ood"), ("Local SSH forwarding", "local-forward"), ("Reverse SSH via relay", "reverse-ssh")], value=self.connection["mode"], allow_blank=False, id="launch-connection", disabled="mode" in self.connection_overrides)
                 yield Label("Open OnDemand address (https://host, no path)", id="launch-ood-label")
-                yield Input(self.ood_origin, placeholder="https://ondemand.example.edu", id="launch-ood-origin", tooltip="The chat page runs inside the GPU job. This address is remembered after submission.")
+                yield Input(self.ood_origin, placeholder="https://ondemand.example.edu", id="launch-ood-origin", disabled=self.connection["mode"] != "ood" or "ood_origin" in self.connection_overrides)
+                with Collapsible(title="Connection details", collapsed=True):
+                    for field, label in [("ood_path", "OOD route ({node} and {port})"), ("ssh_host", "SSH compute destination ({node} uses allocated node)"), ("jump_host", "Workstation jump host (optional)"), ("relay_host", "Stable, node-specific relay host for reverse SSH"), ("relay_jump_host", "Compute-to-relay jump host (optional)"), ("local_port", "Browser port on your computer"), ("relay_port", "Relay port (0 selects an available port)")]:
+                        yield Label(label)
+                        yield Input(str(self.connection[field]), id="connection-" + field, disabled=field in self.connection_overrides)
+                yield Label("4  Workspace on the cluster")
+                yield Input(self.workspace, placeholder="/absolute/path/to/workspace", id="launch-workspace", tooltip="Files & tools reads and writes here. If allowed roots are configured, choose a directory inside one.")
+                yield plain("Choose the folder for files you create, including .txt and .csv. Writes show a preview for approval.", classes="help")
                 yield Label("Context tokens")
                 yield Input(str(self.settings["context"]), type="integer", id="launch-context")
                 yield Label("MTP acceleration")
                 yield Select([("Off", "off"), ("Auto", "auto"), ("Embedded MTP", "embedded"), ("Registered MTP sidecar", "mtp")], value=self.settings["acceleration"], allow_blank=False, id="launch-acceleration")
-                yield plain("Browser mode prints a compute-node link; the batch job continues after you close the terminal. Native chat does not include the legacy file tools or web search.", classes="help")
+                yield plain("Open the printed chat link after startup. The GPU job continues after you close the launcher. Files & tools opens alongside native chat.", classes="help")
                 yield plain("No GPU job starts merely by opening this screen.", classes="help")
                 yield plain(self.error_message, id="launch-error", classes="error")
             with Horizontal(classes="actions"):
@@ -2282,10 +2296,21 @@ class LauncherApp(App):
             if model_id is not Select.NULL and self.validate_launch_resources():
                 try:
                     from .compute_web import validate_origin
-                    mode = str(self.query_one("#launch-chat-mode", Select).value)
+                    mode = "browser"
                     origin = self.query_one("#launch-ood-origin", Input).value.strip()
-                    if mode == "browser":
-                        origin = validate_origin(origin)
+                    connection = dict(self.connection, mode=str(self.query_one("#launch-connection", Select).value), ood_origin=origin)
+                    for field in ("ood_path", "ssh_host", "jump_host", "relay_host", "relay_jump_host", "local_port", "relay_port"):
+                        value = self.query_one("#connection-" + field, Input).value.strip()
+                        connection[field] = int(value) if field.endswith("port") else value
+                    connection.update(self.connection_overrides)
+                    connection = ConnectionConfig(**connection).model_dump()
+                    if connection["mode"] == "ood":
+                        origin = validate_origin(connection["ood_origin"])
+                    if connection["mode"] == "reverse-ssh" and not connection["relay_host"]:
+                        raise ValueError("Set the stable relay host under Connection details.")
+                    workspace = self.query_one("#launch-workspace", Input).value.strip()
+                    if not workspace:
+                        raise ValueError("Choose a workspace directory on the cluster.")
                     settings = InferenceSettings(**dict(self.settings,
                         context=int(self.query_one("#launch-context", Input).value),
                         acceleration=str(self.query_one("#launch-acceleration", Select).value))).model_dump()
@@ -2294,10 +2319,10 @@ class LauncherApp(App):
                     self.query_one("#launch-error").scroll_visible(immediate=True)
                     return
                 self.exit({"action": "start", "model_id": model_id, "resources": self.resources,
-                           "settings": settings, "chat_mode": mode, "ood_origin": origin})
+                           "settings": settings, "chat_mode": mode, "ood_origin": origin, "connection": connection, "workspace": workspace})
         elif id_ == "resources":
             resources = dict(self.resources, walltime=self.query_one("#launch-walltime", Input).value.strip())
-            self.push_screen(ResourceDialog(resources, self.inventory, self.profile), self.resource_result)
+            self.push_screen(ResourceDialog(resources, self.inventory, self.profile, self.resource_overrides), self.resource_result)
         elif id_ == "site-setup":
             try:
                 self.push_screen(SiteSetupDialog(self.profile_service, self.profile), self.site_result)
@@ -2306,9 +2331,10 @@ class LauncherApp(App):
         elif id_ == "import-model":
             self.push_screen(ImportDialog(self.model_service), self.import_result)
 
-    @on(Select.Changed, "#launch-chat-mode")
-    def chat_mode_changed(self, event: Select.Changed) -> None:
-        self.query_one("#launch-ood-origin", Input).disabled = event.value != "browser"
+    @on(Select.Changed, "#launch-connection")
+    def connection_changed(self, event: Select.Changed) -> None:
+        if self.query("#launch-ood-origin"):
+            self.query_one("#launch-ood-origin", Input).disabled = event.value != "ood" or "ood_origin" in self.connection_overrides
 
     def stop_result(self, yes: bool) -> None:
         if yes:

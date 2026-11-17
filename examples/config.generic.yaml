@@ -1,0 +1,46 @@
+# Copy to state/config.yaml or use --config /absolute/config.yaml.
+# Keep credentials in private SSH/runtime state, never in this file.
+schema_version: 1
+selected_profile: my-cluster
+state_directory: "" # Empty preserves the existing --state-root.
+model_cache: ~/scratch/llama_cache
+profiles:
+  my-cluster:
+    description: Generic Slurm example; replace the queue and SSH alias.
+    scheduler: slurm
+    runtime: "" # Empty selects the managed llama-server executable.
+    modules: [] # Literal names, e.g. [cuda/12.4]; never shell commands.
+    runtime_environment: {} # Literal values, never evaluated.
+    resources:
+      partition: gpu-general
+      gpu_type: "" # Empty requests a generic GPU; otherwise the site's GRES type.
+      gpu_count: 1 # Exactly one GPU is supported in this release.
+      cpus: 4
+      memory_gb: 32
+      walltime: "02:00:00"
+      account: ""
+      qos: ""
+      constraint: ""
+    default_preset: ""
+    # Presets are complete requests; omitted fields use ResourceRequest defaults.
+    resource_presets:
+      short:
+        partition: gpu-general
+        gpu_type: ""
+        gpu_count: 1
+        cpus: 4
+        memory_gb: 16
+        walltime: "00:30:00"
+    connection:
+      mode: local-forward
+      ssh_host: "{node}"
+      jump_host: my-cluster-login
+      local_port: 8765
+    workspaces: [~/scratch/llama-workspace]
+    tools:
+      enabled: true
+      allow_writes: false # Preview and approve each write/overwrite.
+      max_file_bytes: 262144
+      max_entries: 500
+      max_tool_calls: 8
+      timeout_seconds: 120

@@ -258,7 +258,7 @@ store.configure_install(profile=sys.argv[3] or None, cache=sys.argv[4] or None)
         archive_legacy_root(app)
         print(f'Installation complete: managed Python + pinned llama.cpp {lock["version"]} ({args.backend}).')
         print('Run ./hpc-llm --check, then ./hpc-llm for model selection and native browser chat.')
-        print('Install models in the browser, or run bash scripts/install-qwen38-q4kp.sh for the Qwen bundle. The optional TUI remains ./hpc-llm.')
+        print('Use Models in the launcher to download or register weights and companions. Choose resources and a workspace, then open the printed chat link.')
         if args.backend != 'cpu':
             print('CUDA libraries are installed. GPU execution still requires a compatible host NVIDIA driver and an allocated GPU.')
     finally:

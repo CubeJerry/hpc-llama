@@ -166,11 +166,12 @@ async def ui_check():
     app = LauncherApp([model], [], SiteProfile())
     async with app.run_test(size=(100, 35)) as pilot:
         await pilot.pause()
-        app.query_one('#launch-chat-mode', Select).value = 'terminal'
+        app.query_one('#launch-connection', Select).value = 'local-forward'
         await pilot.pause()
         assert app.query_one('#launch-ood-origin', Input).disabled
         await pilot.click('#start')
-    assert app.return_value['chat_mode'] == 'terminal'
+    assert app.return_value['chat_mode'] == 'browser'
+    assert app.return_value['connection']['mode'] == 'local-forward'
 
 
 def launcher_check(root):

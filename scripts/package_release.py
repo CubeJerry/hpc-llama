@@ -12,7 +12,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=root.parent / "hpc-llm-release.zip")
     args = parser.parse_args()
     files = [root / name for name in ("README.md", "LICENSE", ".gitignore", "pyproject.toml", "install.sh", "hpc-llm")]
-    for directory in ("src/hpc_llm", "scripts", "profiles", "assets"):
+    for directory in ("src/hpc_llm", "scripts", "profiles", "examples", "docs"):
         for path in (root / directory).rglob("*"):
             if path.is_symlink():
                 raise SystemExit(f"Refusing source symlink: {path}")

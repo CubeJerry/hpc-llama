@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import secrets
 
@@ -21,6 +22,15 @@ class BrowserLogin:
     def authorized(self, request: web.Request) -> bool:
         value = request.cookies.get(self.cookie_name, '')
         return hmac.compare_digest(value.encode(), self.cookie_value.encode())
+
+    def initialize_html(self, body: bytes) -> bytes:
+        # A valid cookie can bypass login on a reconnect link. Clear the private
+        # fragment before native hash routing; preserve ordinary #/chat routes.
+        url = html.escape(self.root_path + '_hpc/browser-init.js', quote=True)
+        script = f'<script src="{url}"></script>'.encode()
+        head = body.lower().find(b'<head')
+        end = body.find(b'>', head) + 1 if head >= 0 else 0
+        return body[:end] + script + body[end:]
 
     async def gate(self, request: web.Request, path: str) -> web.Response | None:
         # The caller checks Origin / Sec-Fetch-Site before reaching this gate.
@@ -44,6 +54,9 @@ class BrowserLogin:
                                 secure=self.secure, httponly=True, samesite='Strict')
             return response
         if self.authorized(request):
+            if path == '/_hpc/browser-init.js' and request.method == 'GET':
+                return web.Response(text=BROWSER_INIT, content_type='application/javascript',
+                                    headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
             return None
         if path == '/' and request.method == 'GET':
             nonce = secrets.token_urlsafe(24)
@@ -55,6 +68,12 @@ class BrowserLogin:
             })
         return web.json_response({'error': 'Open the private chat link from ./hpc-llm attach to sign in.'}, status=401,
                                  headers={'Cache-Control': 'no-store'})
+
+
+BROWSER_INIT = """if (new URLSearchParams(location.hash.slice(1)).has('access')) {
+  history.replaceState(history.state, '', location.pathname + location.search);
+}
+"""
 
 
 LOGIN_PAGE = '''<!doctype html>
