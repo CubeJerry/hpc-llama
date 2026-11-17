@@ -58,6 +58,17 @@ def _command(manifest, launcher, root, mode):
     return [str(launcher), "--state-root", str(root), mode, manifest.id]
 
 
+def _environment(profile: SiteProfile) -> list[str]:
+    profile = SiteProfile.model_validate(profile.model_dump())
+    lines = []
+    if profile.modules:
+        lines += ["if ! type module >/dev/null 2>&1; then echo 'Configured environment modules are unavailable; use a runtime wrapper or initialise modules in your batch shell' >&2; exit 1; fi",
+                  "module load " + shlex.join(profile.modules)]
+    for key, value in profile.runtime_environment.items():
+        lines.append("export " + key + "=" + shlex.quote(value))
+    return lines
+
+
 class SlurmScheduler:
     name = "slurm"
 
@@ -73,7 +84,7 @@ class SlurmScheduler:
         for field in ("account", "qos", "constraint"):
             if getattr(r, field):
                 directives.append(f"#SBATCH --{field}={getattr(r, field)}")
-        return "\n".join(["#!/bin/bash", *directives, "set -euo pipefail", "umask 077",
+        return "\n".join(["#!/bin/bash", *directives, "set -euo pipefail", "umask 077", *_environment(manifest.profile),
                            "exec " + shlex.join(_command(manifest, launcher, root, "_supervisor"))]) + "\n"
 
     def submit(self, script, manifest, run):
@@ -196,7 +207,7 @@ class PBSScheduler:
                       "#PBS -j oe", f"#PBS -o {shlex.quote(str(folder / 'logs' / 'allocation.log'))}"]
         if r.account:
             directives.append(f"#PBS -A {r.account}")
-        return "\n".join(["#!/bin/bash", *directives, "set -euo pipefail", "umask 077", "cd -- " + shlex.quote(str(launcher.parent)),
+        return "\n".join(["#!/bin/bash", *directives, "set -euo pipefail", "umask 077", *_environment(p), "cd -- " + shlex.quote(str(launcher.parent)),
                            "exec " + shlex.join(_command(manifest, launcher, root, "_supervisor"))]) + "\n"
 
     def submit(self, script, manifest, run):

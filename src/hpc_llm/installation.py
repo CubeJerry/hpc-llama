@@ -257,7 +257,8 @@ store.configure_install(profile=sys.argv[3] or None, cache=sys.argv[4] or None)
         (app / 'hpc-llm').chmod(0o700)
         archive_legacy_root(app)
         print(f'Installation complete: managed Python + pinned llama.cpp {lock["version"]} ({args.backend}).')
-        print('Model weights are selected/downloaded separately. Run ./hpc-llm --check, then ./hpc-llm.')
+        print('Run ./hpc-llm --check, then ./hpc-llm for model selection and native browser chat.')
+        print('Use Models in the launcher to download or register weights and companions. Choose resources and a workspace, then open the printed chat link.')
         if args.backend != 'cpu':
             print('CUDA libraries are installed. GPU execution still requires a compatible host NVIDIA driver and an allocated GPU.')
     finally:

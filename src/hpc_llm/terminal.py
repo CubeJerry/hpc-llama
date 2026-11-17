@@ -4,6 +4,33 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
+import os
+from urllib.parse import urlsplit
+
+
+def hyperlink_text(url: str, *, enabled: bool = False) -> str:
+    """Only our fixed OSC 8 controls bypass clean_text; URL text is validated.
+
+    The complete URL is always printed as a fallback, including the private
+    fragment. Never pass arbitrary provider text or filenames through this API.
+    """
+    if not isinstance(url, str) or any(c.isspace() or ord(c) < 33 or 127 <= ord(c) <= 159 for c in url):
+        raise ValueError('Browser URL contains terminal controls or whitespace.')
+    parsed = urlsplit(url)
+    if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError('Browser URL must be an HTTP(S) address without credentials in its authority.')
+    parsed.port  # Reject invalid port text before emitting a terminal sequence.
+    label = f'\x1b]8;;{url}\x1b\\Open chat\x1b]8;;\x1b\\' if enabled else 'Open chat'
+    return label + '\n' + url
+
+
+def print_browser_link(url: str, *, stream=None) -> None:
+    stream = sys.stdout if stream is None else stream
+    preference = os.environ.get('HPC_LLM_HYPERLINKS', 'auto').lower()
+    enabled = preference == 'on' or (preference != 'off' and stream.isatty() and os.environ.get('TERM', '') != 'dumb')
+    # Intentionally bypass cli.display/clean_text only after strict URL validation;
+    # sending OSC 8 through the general untrusted-text sanitizer would remove it.
+    print(hyperlink_text(url, enabled=enabled), file=stream, flush=True)
 
 
 def _wait_attached(argv: list[str], env: dict[str, str]) -> int:

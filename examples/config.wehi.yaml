@@ -1,0 +1,42 @@
+# WEHI Milton example. Use your actual OOD origin and account permissions.
+schema_version: 1
+selected_profile: wehi
+state_directory: ""
+model_cache: /vast/scratch/users/$USER/llama_cache
+profiles:
+  wehi:
+    description: WEHI Milton through the site's approved OOD compute proxy.
+    scheduler: slurm
+    runtime: ""
+    modules: []
+    runtime_environment: {}
+    resources:
+      partition: gpuq
+      gpu_type: A30
+      gpu_count: 1
+      cpus: 4
+      memory_gb: 16
+      walltime: "01:00:00"
+      account: ""
+      qos: ""
+      constraint: ""
+    resource_presets:
+      A100-four-hours:
+        partition: gpuq
+        gpu_type: A100
+        gpu_count: 1
+        cpus: 4
+        memory_gb: 32
+        walltime: "04:00:00"
+    connection:
+      mode: ood
+      ood_origin: "" # Enter https://YOUR-OOD-HOST or select it in launcher.
+      ood_path: /rnode/{node}/{port}
+    workspaces: [/vast/scratch/users/$USER/llama-workspace]
+    tools:
+      enabled: true
+      allow_writes: false
+      max_file_bytes: 262144
+      max_entries: 500
+      max_tool_calls: 8
+      timeout_seconds: 120

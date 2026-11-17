@@ -94,23 +94,30 @@ def acceleration_command(capabilities, model, settings) -> list[str]:
     capabilities.acceleration_reason = 'MTP is disabled'
     if settings.acceleration == 'off':
         return []
+    # FastMTP's reduced-vocabulary sidecar requires a patched executable.
+    # Auto uses the full model's embedded MTP with the managed stock runtime.
+    fastmtp = bool(model.mtp_path and re.search(r'fastmtp', Path(model.mtp_path).name, re.I))
+    embedded = settings.acceleration == 'embedded' or (settings.acceleration == 'auto' and fastmtp)
+    head = None if embedded else model.mtp_path
     reason = ''
+    if embedded and not model.mtp_layers:
+        reason = 'No embedded MTP layers were detected in this model.'
     if not capabilities.mtp_supported or '--spec-type' not in capabilities.flags:
         reason = 'Installed runtime does not advertise draft-mtp. Install a compatible runtime.'
-    elif not model.mtp_path and not model.mtp_layers:
+    elif not head and not model.mtp_layers:
         reason = 'No embedded MTP layers or registered MTP companion. Add a matching companion in Models.'
     draft_flag = next((flag for flag in DRAFT_MODEL_FLAGS if flag in capabilities.flags), None)
-    if model.mtp_path and not draft_flag:
+    if head and not draft_flag:
         reason = 'Installed runtime cannot select a separate MTP companion.'
     if reason:
         capabilities.acceleration_status = 'Unavailable'
         capabilities.acceleration_reason = reason
-        if settings.acceleration == 'mtp':
+        if settings.acceleration in ('mtp', 'embedded'):
             raise AppError('unsupported', reason)
         return []
     command = ['--spec-type', 'draft-mtp']
-    if model.mtp_path:
-        command += [draft_flag, str(Path(model.mtp_path).expanduser().resolve())]
+    if head:
+        command += [draft_flag, str(Path(head).expanduser().resolve())]
     defaults = InferenceSettings()
     for name, flag in MTP_FLAGS.items():
         if flag in capabilities.flags:
@@ -118,7 +125,7 @@ def acceleration_command(capabilities, model, settings) -> list[str]:
         elif getattr(settings, name) != getattr(defaults, name):
             raise AppError('unsupported', f'The installed runtime does not support {name}.')
     capabilities.acceleration_status = 'Requested'
-    capabilities.acceleration_reason = 'MTP arguments configured; waiting for backend readiness'
+    capabilities.acceleration_reason = ('Embedded MTP configured' + ('; FastMTP sidecar requires a patched runtime' if fastmtp else '') if embedded else 'MTP arguments configured; waiting for backend readiness')
     return command
 
 

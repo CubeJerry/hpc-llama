@@ -131,9 +131,19 @@ def _relative(root: Path, path: str | Path | None) -> Path:
 def _open_at(root: Path, relative: Path, *, directory: bool = False) -> int:
     """Walk using directory FDs and O_NOFOLLOW to close symlink check/open races."""
     flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0)
-    root_fd = os.open(root, flags | os.O_DIRECTORY)
-    fd = root_fd
+    root = Path(os.path.abspath(Path(root).expanduser()))
+    relative = Path(relative)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise AppError('permission', 'Path must remain below the selected workspace.')
+    # O_NOFOLLOW on an absolute root protects only its final component. Pin
+    # every ancestor from / so a renamed ancestor replaced by a symlink cannot
+    # redirect an already configured workspace into another directory.
+    fd = os.open('/', flags | os.O_DIRECTORY)
     try:
+        for part in root.parts[1:]:
+            next_fd = os.open(part, flags | os.O_DIRECTORY, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
         parts = relative.parts
         for index, part in enumerate(parts):
             last = index == len(parts) - 1

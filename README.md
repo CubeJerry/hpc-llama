@@ -1,190 +1,210 @@
 # HPC Llama
 
-Run local GGUF models on a cluster GPU. Use a terminal interface to chat, read files, and search the web. Detach and reconnect while the model stays loaded.
+Run GGUF models in a persistent Slurm or PBS GPU job. Use the terminal launcher on your cluster login node to install or register models, choose resources, and start a job. Open its **Open chat** link to chat in llama.cpp's native browser interface. The job keeps running after you close the launcher or browser.
 
-The application uses llama.cpp in a persistent Slurm or PBS allocation. Slurm sessions use an attachable `srun` terminal. The batch job owns the model process.
+The browser service runs inside the GPU job. There is no separate launch dashboard or CPU allocation. The original terminal-chat version is preserved on [`tui`](https://github.com/CubeJerry/hpc-llama/tree/tui) at commit [`c99048d`](https://github.com/CubeJerry/hpc-llama/commit/c99048d30e8ccb1c18f6d455bba9644f5ce380c2).
 
-![Chat interface at 2560 × 1440](assets/chat.png)
+## Install or update
 
-## Install
-
-Run these commands on your cluster's **Linux login node**. Keep the application folder on retained project or home storage. Login and compute nodes must share this path.
+Run these commands on a **Linux x86_64 login node**. Keep the application folder on retained home or project storage at a path shared with compute nodes.
 
 ```bash
 git clone https://github.com/CubeJerry/hpc-llama.git
 cd hpc-llama
-bash install.sh --profile NAME
+bash install.sh --profile generic
+./hpc-llm --check
+```
+
+For WEHI Milton, use `bash install.sh --profile wehi`. For PBS Pro / OpenPBS, start with `--profile pbs`. You can choose another profile later in **Site setup…**.
+
+The installer supplies private Python, application libraries, pinned llama.cpp build b11351, and CUDA user-space libraries. It needs Bash, `curl`, `tar`, `sha256sum`, network access for downloads, and scheduler clients. CUDA requires glibc 2.28 or later and a compatible NVIDIA driver on compute nodes. It does not install the kernel driver or download model weights. Keep the installation at the same path; rerun the installer after moving it. Use `--backend cpu` for the CPU runtime. `./hpc-llm --demo` runs the simulated legacy terminal backend without a scheduler or model.
+
+To update a Git installation, finish or stop active sessions first, then run from its existing directory:
+
+```bash
+git pull --ff-only
+bash install.sh
 ./hpc-llm --check
 ./hpc-llm
 ```
 
-Use `./hpc-llm` from this folder. Installation does not add the command to your shell's `PATH`.
-
-The installer supplies private Python, application libraries, llama.cpp, and CUDA user-space libraries. It does not load system modules or download model weights. Keep the installed folder at the same path. If you move it, run the installer again at the new path.
-
-**Host requirements:** Linux x86_64, Bash, `curl`, `tar`, `sha256sum`, and scheduler commands. The default CUDA runtime requires glibc 2.28 or later and a compatible NVIDIA driver on the compute node. Git is needed for the clone command. A macOS or Windows terminal can connect to the cluster through SSH; installation runs on the cluster.
-
-Some blank profiles ```.json``` files are provided:
+For an existing ZIP installation named `hpc-llm`, upload `hpc-llm-0.2.0-source.zip` beside that directory, then:
 
 ```bash
-bash install.sh --profile generic   # Slurm
-bash install.sh --profile pbs       # PBS Pro / OpenPBS
+unzip -o hpc-llm-0.2.0-source.zip
+cd hpc-llm
+sha256sum -c SOURCE_CHECKSUMS.sha256
+bash install.sh
+./hpc-llm --check
+./hpc-llm
 ```
 
-For a CPU-only installation, add `--backend cpu`. After installation, `./hpc-llm --demo` opens a simulated session without a scheduler, model download, or internet access.
+The source ZIP excludes state, credentials, environments and model weights. Updating preserves those existing directories. Do not replace your saved configuration with an example during an update. Already-running jobs retain their loaded code; restart them to use this release.
 
-## Configure your site once
+## Configure a cluster
 
-Open **Site setup…** in the launcher. Select the scheduler. Enter your site's partition or queue, GPU type, account, and default resources. Select **Save & use**. Add named presets for resource combinations you use often.
+The versioned configuration is `state/config.yaml` by default. The installer creates it, or migrates existing JSON settings on first use. Open **Site setup…** to edit the scheduler, partition or queue, GPU label, account, defaults and named resource presets. Routine launch changes do not require editing YAML.
 
-The bundled `generic`, and `pbs` profiles are starting points. Check their values against your cluster access. 
+This is a minimal generic configuration for a site with an approved Open OnDemand compute route:
 
-![Site profile editor](assets/site-setup.png)
-
-You can also import a JSON profile. Save the following example as `mysite.json` in the application folder. Replace the resource values with those for your site.
-
-```json
-{
-  "name": "mysite",
-  "description": "My cluster GPU resources",
-  "scheduler": "slurm",
-  "resources": {
-    "partition": "gpu",
-    "gpu_type": "A100",
-    "gpu_count": 1,
-    "cpus": 8,
-    "memory_gb": 32,
-    "walltime": "04:00:00",
-    "account": "",
-    "qos": "",
-    "constraint": ""
-  },
-  "resource_presets": {},
-  "model_cache": "cache/models",
-  "runtime": ""
-}
+```yaml
+schema_version: 1
+selected_profile: generic
+profiles:
+  generic:
+    scheduler: slurm
+    resources:
+      partition: gpu
+      gpu_type: ""
+      gpu_count: 1
+      cpus: 4
+      memory_gb: 32
+      walltime: "01:00:00"
+    model_cache: cache/models
+    workspaces:
+      - /absolute/path/to/your/workspace
+    connection:
+      mode: ood
+      ood_origin: https://ondemand.example.edu
+      ood_path: /rnode/{node}/{port}
 ```
 
-```bash
-./hpc-llm profiles use ./mysite.json
-./hpc-llm profiles show
-```
+Replace the partition, GPU label, paths and OOD origin with your site's values. Create your workspace on shared cluster storage. Keep it separate from application state and credentials. Partition and GPU names are free text, not a list of WEHI resources. This release supports **one GPU on one node**; other GPU counts are rejected before submission. `memory_gb` requests host RAM, not GPU VRAM.
 
-Import creates a managed copy at `state/profiles/mysite.json`. Edit that copy later, or use **Site setup…**. Each profile has its own name; there is no required file named `profile.json`. `state/config.json` stores the active profile and any model-cache override.
+See [configuration and precedence](docs/configuration.md), [generic example](examples/config.generic.yaml), and [WEHI example](examples/config.wehi.yaml) for presets, paths, runtime environment, tool limits and connection options. Keep passwords, private keys and tokens out of YAML. Select another config with `./hpc-llm --config /absolute/path/config.yaml`.
 
-| Field | What to enter |
-|---|---|
-| `name` | A unique name. Use letters, numbers, underscores, or hyphens. |
-| `scheduler` | `slurm` or `pbs`. |
-| `partition` | Your Slurm partition or PBS queue. |
-| `gpu_type` | The GPU resource label used by your site. Leave blank if the site does not require one. |
-| `gpu_count` | Set to `1`. This release supports one GPU on one node for Slurm and PBS. |
-| `cpus` | The number of CPU cores to request. |
-| `memory_gb` | **System RAM**, in GB. This does not set GPU VRAM. |
-| `walltime` | Default time limit, such as `04:00:00`. |
-| `account` | Your allocation account, if required. Otherwise leave blank. |
-| `qos`, `constraint` | Optional Slurm settings. Leave blank for PBS. |
-| `resource_presets` | Named resource combinations. Use Site setup to add them. |
-| `model_cache` | Folder for downloaded weights. Relative paths start from the application folder. |
-| `runtime` | Leave blank to use the installed llama.cpp runtime. |
-
-Profile paths expand `~` and environment variables such as `$USER`. User profiles override bundled profiles with the same name. If you set `HPC_LLM_HOME`, user profiles and configuration use that state folder instead.
-
-**PBS:** start from the bundled `pbs` profile. Set `pbs_gpu_resource`, the optional `pbs_gpu_type_resource`, and `pbs_attach_command` for your site. PBS requires `qsub`, `qdel`, `qstat -fx -F json`, retained job history, and `pbs_attach`. Attaching also requires non-interactive SSH to the allocated host with normal host-key verification. These requirements need site validation. Other workload managers are not supported.
-
-## Choose the model cache
-
-The generic and PBS profiles default to `cache/models` inside the application folder. To choose another location:
-
-```bash
-./hpc-llm profiles cache '/path/to/folder'
-./hpc-llm profiles show
-```
-
-You can also pass `--cache-dir PATH` to `install.sh`. This option changes the model location only. Python, libraries, and the runtime stay in the application folder.
-
-Cache selection follows this order: `HPC_LLM_MODEL_CACHE`, then `state/config.json`, then the selected profile, then `cache/models`. A saved global override stays active when you change profiles. Unset `HPC_LLM_MODEL_CACHE` if you want the saved setting to apply.
-
-The application creates a missing cache folder. It retains existing files and reports an unwritable path. It does not silently choose another folder. Registered local weights stay at their original paths.
+On WEHI Milton, select the `wehi` profile, set the partition and GPU resources available to your account, and copy the HTTPS origin from your working OOD page, without its path. The working route is the compute-node reverse proxy. It does not need compute-to-login SSH. Site access and partition permissions still apply.
 
 ## Install or register a model
 
-Select **Add model** and paste a Hugging Face repository or model URL. Choose the quantization, then review the download plan. The command-line equivalent is:
+Open **Models…**, paste a Hugging Face repository or model URL, choose a quantization, and review the download plan. The launcher shows download and verification progress. The CLI offers the same installation path:
 
 ```bash
 ./hpc-llm models install unsloth/Qwen3.8-27B-GGUF --quant UD-Q4_K_XL --dry-run
 ./hpc-llm models install unsloth/Qwen3.8-27B-GGUF --quant UD-Q4_K_XL
 ```
 
-Replace the repository and quantization with your choice. The installer selects one main quantization and an unambiguous matching vision projector. If several companion files match, specify an exact filename. It verifies downloaded files and registers them. Model support also depends on the installed llama.cpp runtime.
+Use your chosen repository and quantization. The installer selects one main quantization and an unambiguous matching vision projector. Specify exact companion filenames when several match. Downloads are pinned and verified; unchanged, previously verified files reuse their checksum result. Add `--verify-full` to read every byte again.
 
-Already have the weights? Register them without copying or downloading:
+Register existing files at their exact paths without copying them:
 
 ```bash
-./hpc-llm models register /absolute/path/model.gguf
-# Include a matching vision projector when available:
-./hpc-llm models register /absolute/path/model.gguf --projector /absolute/path/mmproj.gguf
+./hpc-llm models register /absolute/path/model.gguf \
+  --projector /absolute/path/mmproj.gguf \
+  --mtp /absolute/path/mtp.gguf
 ./hpc-llm models list
 ```
 
-### Add vision or MTP later
-
-In **Add model**, select the registered model as the update target. Expand **Vision / acceleration and revision** to select its companions. Or run:
+Omit companions you do not have. To add downloaded companions to an existing model, select that model as the update target in **Models…**, or run:
 
 ```bash
 ./hpc-llm models install --model /absolute/path/model.gguf \
   --projector auto --mtp auto
 ```
-This update downloads companions only. It preserves the main weights, model identity, and saved settings. For a manually registered model, also supply its original `OWNER/REPOSITORY`. Use exact companion filenames if `auto` is ambiguous. The main weights must match that repository.
 
-![Model companion installation options](assets/model-companions.png)
+For a manually registered model, supply its original `OWNER/REPOSITORY` as the source too. Exact filenames replace `auto` when selection is ambiguous. The main model must match that repository. A companion-only update retains the main weights, model identity and saved defaults. Start a new GPU session after adding companions.
 
-Start a **new GPU session** after you add companions. A running session keeps its original model configuration.
+Set context size and **MTP acceleration** before launch. **Auto** uses MTP when the model and runtime support it. **Embedded MTP** selects a model's embedded head. **Registered MTP sidecar** uses the registered companion and reports missing requirements. A downloaded or registered file is not proof that the runtime can load it. MTP can require more VRAM and does not guarantee faster generation.
 
-Enable MTP in **Advanced → Acceleration**. **Auto** uses MTP when the model and runtime report support. Explicit **MTP** reports an error if requirements are missing. Some models contain MTP layers; others need a compatible head. MTP can use more VRAM, and it does not guarantee faster generation.
+For the requested Qwen3.8 Q4_K_P main model, BF16 projector and FastMTP sidecar bundle:
 
-Unchanged, previously verified files reuse their checksum result. New or changed files receive a full check. Select **Full checksum recheck**, or add `--verify-full`, to read every byte again.
+```bash
+bash scripts/install-qwen38-q4kp.sh --dry-run
+bash scripts/install-qwen38-q4kp.sh
+```
 
-## Start, detach, and reconnect
+The pinned bundle totals about 19.76 GB. Its separate reduced-vocabulary FastMTP sidecar requires the [publisher's patched runtime](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF#run-hauhaucs-fastmtp). Installing it does not patch the managed runtime. Auto uses the main model's verified embedded MTP head when supported.
 
-1. Select a registered model in the launcher.
-2. Set **Time limit** for this allocation. Open **Resources** to change the GPU, system RAM, CPUs, partition, or preset.
-3. Select **Start session**. The scheduler may queue the request before the model loads.
+## Launch, reconnect and stop
 
-Launch changes apply to that allocation only. You do not need to edit or reinstall the profile each time. You cannot change an existing allocation's expiry through the app.
+```bash
+./hpc-llm
+```
 
-**Detach**, Ctrl+D, or Ctrl+Q closes the chat view and leaves the allocation running. It continues to use allocated GPU time. Open `./hpc-llm` and select **Resume** to reconnect to a running session. **Restore saved chats** starts a new allocation for a saved session. **Stop GPU session** releases the allocation. In the launcher, Ctrl+D or Ctrl+Q exits the application.
+1. Select a registered model.
+2. Select a preset or edit **Resources**: partition/queue, GPU type, CPUs, host RAM, account and time limit. Choose context and acceleration.
+3. Choose the connection mode and select an existing shared workspace. The default application workspace is created automatically.
+4. Review the effective request, then select **Start session**.
+5. Wait for the queue and model startup. Open **Open chat** when the launcher reports readiness.
 
+The ready message includes a terminal hyperlink and the complete URL as a fallback. Click support depends on the terminal, including the site's OOD terminal. Copy the full URL if the label is not clickable. Set `HPC_LLM_HYPERLINKS=off` to disable hyperlinks or `on` to request them explicitly. The app does not try to launch a browser on the remote node.
 
-## Use the chat interface
+The private link ends in `#access=...`. Opening it exchanges that key for an HttpOnly session cookie, then removes the fragment from the address bar. Keep the complete link private. No Basic Auth popup is required; leave the native UI API-key setting empty. The backend API key stays private inside the job. If the terminal truncates the link, the sign-in page accepts the access key as a fallback.
 
-| Control | Behavior |
+Closing the launcher, pressing Ctrl+C while waiting, or closing the browser leaves the submitted job running. Show status or redisplay an existing job's link with:
+
+```bash
+./hpc-llm sessions
+./hpc-llm attach SESSION_ID
+```
+
+**Resume** in the launcher reconnects too. Reconnection does not submit another allocation. If a job has ended, select the model and start a new one. Legacy **Restore saved chats** applies to terminal-chat snapshots, not native browser history.
+
+Release the allocation explicitly when finished:
+
+```bash
+./hpc-llm stop SESSION_ID
+```
+
+You can also select **Stop** in the launcher. GPU time continues until you stop the job or its walltime expires. This release does not renew allocations or change their expiry.
+
+## Choose browser access
+
+| Mode | Browser route | Prerequisites | Process to keep running |
+|---|---|---|---|
+| `ood` | Browser → site's OOD reverse proxy → authenticated service in the GPU job | Approved compute host/port route and HTTPS OOD origin | GPU job; no personal SSH tunnel |
+| `local-forward` | Browser → local SSH forward → compute-node loopback service | Your computer can SSH to the compute node, directly or through an approved jump host | Printed SSH command on your computer, plus GPU job |
+| `reverse-ssh` | Browser → local SSH forward → relay loopback → compute-owned reverse SSH forward → GPU service | Compute node can batch-SSH to a fixed relay; your computer can SSH to that same relay | Printed SSH command on your computer; the job owns the reverse tunnel |
+
+Open OnDemand reverse proxying and SSH reverse forwarding are separate mechanisms. Use OOD or direct local forwarding when compute nodes cannot SSH back to a relay. The OOD mode binds the authenticated entry point for the site's proxy route; the inference backend stays on loopback. SSH modes keep service and tunnel endpoints on loopback.
+
+For SSH modes, run the printed `ssh -N -L ...` command **on your computer**, then open the printed localhost URL there. Closing that SSH process disconnects browser access but does not stop the job; rerun it to reconnect. Specify a stable host or SSH alias, with jump hosts where needed. A load-balanced login alias may lead to a different relay. Nondefault SSH ports belong in your own SSH configuration.
+
+OpenSSH must support forwarding with normal host-key verification and noninteractive authentication. Provision known hosts and authentication using your site's approved procedure. The app does not create SSH keys, modify SSH configuration, enable `GatewayPorts`, disable host-key checking or forward your SSH agent. See [connection configuration](docs/configuration.md#connection-settings).
+
+## Tools, workspaces and file creation
+
+Open **Files & tools** in native chat to browse and refresh allowed cluster workspaces, read UTF-8 text/code/CSV/JSON, create directories, save generated text or code at an exact path, and download files. Choose a workspace before saving. You can create `.txt`, `.csv`, Markdown, JSON and code files; saving a CSV writes text and does not calculate spreadsheet formulas.
+
+Paste a native chat response into the panel's editor to save it, or use **Ask the model to work with files** for a task with file tools. That task has its own context; it does not automatically see native chat or its attachments. The server executes the loaded model's validated tool calls, returns results to the model, and repeats within the configured limits. The panel displays activity and failures, and can export its task transcript as JSON.
+
+Writes show the exact destination and proposed content/diff for approval, including overwrites. A file is reported as saved only after the write completes. By default every write needs approval. Setting `tools.allow_writes: true` deliberately permits model-driven writes inside the selected workspace without individual approval. Manual editor saves still show a preview. The executor rejects paths outside allowed workspaces, symlink escapes and application secrets. It has no shell-execution tool.
+
+Native attachments are separate from workspace files. Uploading an attachment to chat does not save it at a named cluster path. Use the files panel to persist an output, and **Download** to copy a saved file to your computer. See [storage and browser history](docs/storage.md) for the distinction and export instructions.
+
+The tool workflow has file-size, directory-entry, call-count and time limits. Model-driven operations need compatible tool-call support. The visible file controls also work without relying on a model to request a tool. Old terminal web-search tools are not automatically connected to native chat. See [the browser integration](docs/browser-integration.md) for the execution path and runtime-update checks.
+
+## History and storage
+
+Weights and downloaded companions live in your model cache. Registered local files stay where you registered them. Session settings and logs live under `STATE/sessions/SESSION_ID/`. Explicitly approved outputs live in their selected cluster workspace.
+
+Native browser history and attachments live in the browser's IndexedDB, not in the cluster session directory. On the pinned UI, changing only an OOD `/rnode/NODE/PORT/` path under the same browser origin keeps the same history database visible. Changing hostname, scheme or browser-facing port creates a different origin; using another browser profile also changes storage. Clearing site data can remove history.
+
+Export important chats through the native sidebar. A single conversation exports as JSONL; multiple conversations export as a ZIP. Browser downloads go to your computer's download destination. Existing conversations are not silently migrated or deleted. See [storage details and pinned source references](docs/storage.md).
+
+## Troubleshooting
+
+| Symptom | Check |
 |---|---|
-| Message box | Enter sends. Shift+Enter or Ctrl+J adds a line. Use your terminal's paste command. |
-| **Think** | Shows the thinking controls reported by the loaded model template. Options vary by model. |
-| **Context** | Sets context capacity and output budget. A capacity change reloads the model in the same allocation. |
-| **Web** | Enables external searches and page requests for the session. Per-request approval is optional. |
-| **Advanced** | Holds temperature, sampling parameters, acceleration, and other detailed settings. |
-| **New chat** | Starts with empty context and retains the previous chat. Ctrl+N is the shortcut. |
-| **Read / save…** | Opens a readable response, selectable raw text, and Markdown or text export. |
+| OOD 404 | Confirm the configured origin, proxy path and compute hostname are permitted by the site. Local readiness cannot prove that the external OOD route is enabled. |
+| 401 or a sign-in page | Reopen the complete private link, including `#access=...`, in the same tab. Keep native UI API-key settings empty. Use `attach` to redisplay the link. |
+| 403 | Open the configured URL origin rather than another hostname or port. Check the proxy's forwarded path and cookie handling; cross-origin requests are rejected. |
+| HTML loads but assets, models or streaming fail | Preserve the complete URL prefix and trailing slash. Check browser network errors for missing assets and `/v1/models` or completion requests. A successful HTML page alone does not verify the proxy. |
+| Queue or startup delay | Run `sessions`, then `attach SESSION_ID`. Inspect scheduler reasons and private session logs. Waiting cancellation does not cancel the job. |
+| Model fails to load | Check memory/context, compatible projector/MTP files, runtime capabilities, and `logs/backend.log`. Registration alone does not verify inference. |
+| Local port already in use | Use an unused local port in the printed SSH command and open its matching URL, or choose another `connection.local_port` for a new session. Browser history at the old localhost port remains under that origin. |
+| Reverse tunnel fails | Inspect `logs/reverse-ssh.log`. Check the fixed relay, known host, batch authentication, forwarding policy and port availability. Use `ood` or `local-forward` if compute-to-relay SSH is blocked. |
+| Old job asks for Basic Auth | Stop it and start a new session. An already-running job does not receive updated login code. |
+| Files panel has no workspace | Add an allowed shared-storage path to the selected profile, create that directory, then start a new job. Keep application state outside it. |
 
-Set the maximum output to **0** for automatic use of the estimated remaining context. A positive value is a ceiling, capped to the remaining space. Input, thinking, and output share the context window. A full prompt still requires a new chat, less input, or a larger context.
+`./hpc-llm doctor` checks the installation, scheduler clients, runtime and model paths. Diagnostics and session access files are private; redact credentials before sharing logs.
 
-Context settings show a **VRAM estimate** as you type. The indicator uses backend measurements where available, with a supported-model metadata fallback. It warns near or above the observed GPU budget. Unknown configurations remain unknown. Estimates cannot guarantee a fit, especially with images, MTP, partial offload, or multiple GPUs.
+## Verification
 
-![Context controls and VRAM estimate](assets/context-vram.png)
+[Verification and cluster smoke tests](docs/verification.md) describe the deterministic backend tests, browser checks, and site checks that require a real allocation. Local fixtures exercise authentication, prefix handling, streaming, tools and actual filesystem writes; they do not establish GPU inference, site SSH policy or the external OOD route.
 
-### Files, web sources, and outputs
+Build a source archive with:
 
-Choose **Workspace** for local inputs and saved outputs. This path is on the cluster. Transfer files through Open OnDemand Files, SCP, or SFTP before attaching them.
-
-Read TXT, Markdown, CSV/TSV, JSON, DOCX, Excel `.xlsx`, and selectable PDF text. File citations identify the source location. Excel processing reads saved values; it does not recalculate formulas. PDF processing does not perform OCR. PNG, JPEG, and WebP analysis requires a vision-capable model and its matching projector.
-
-Web search and page retrieval provide source citations. They require compute-node internet access and an available provider. **Web On** permits external queries until you turn it off. File processing and model inference run on the cluster.
-
-Ask the model to create a Markdown or text file in the selected workspace. Use **Read / save…** to save an individual reply. The app does not generate updated PDFs or Excel workbooks. Clipboard transfer depends on your terminal and connection.
-
-![Reply reader and save controls](assets/reply-reader.png)
-
-The previews use a 200-column × 56-row terminal at 2560 × 1440 pixels. Your font size and display scaling change the visible proportions. [All preview pictures](assets/).
-
+```bash
+.venv/bin/python scripts/package_release.py --output ../hpc-llm-0.2.0-source.zip
+```
