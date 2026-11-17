@@ -20,7 +20,7 @@ class LauncherConfigChecks(unittest.TestCase):
             root = Path(folder)
             config = root / 'custom.yaml'
             state = root / 'configured-state'
-            save_config(config, AppConfig(state_directory=str(state), profiles={'generic': SiteProfile()}))
+            save_config(config, AppConfig(state_directory=str(state), profiles={'slurm': SiteProfile()}))
             with patch('hpc_llm.cli.check', return_value=0) as check:
                 self.assertEqual(cli.main(['--config', str(config), '--check']), 0)
                 check.assert_called_once_with(state)

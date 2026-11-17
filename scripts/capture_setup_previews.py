@@ -45,7 +45,7 @@ async def capture(destination: Path) -> None:
                 "Overnight A100": ResourceRequest(partition="gpu", gpu_type="A100", walltime="08:00:00"),
             },
         )
-        (bundled / "wehi.json").write_text(profile.model_dump_json())
+        (bundled / "slurm.json").write_text(profile.model_dump_json())
         (bundled / "example-pbs.json").write_text(SiteProfile(name="example-pbs", scheduler="pbs", resources=ResourceRequest(partition="workq")).model_dump_json())
         store = ProfileStore(root / "state", root / "installation")
         store.initialize()

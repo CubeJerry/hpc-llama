@@ -4,7 +4,7 @@
   "runtime": "",
   "model_cache": "",
   "name": "generic",
-  "description": "Generic Slurm template. Set the partition and GPU resource names used by your cluster.",
+  "description": "Legacy generic Slurm profile retained for compatibility. Use the slurm profile for new installations.",
   "scheduler": "slurm",
   "resources": {
     "partition": "gpu",

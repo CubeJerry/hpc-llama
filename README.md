@@ -1,6 +1,6 @@
 # HPC Llama
 
-Run GGUF models in a persistent Slurm or PBS GPU job. Use the terminal launcher on your cluster login node to install or register models, choose resources, and start a job. Open its **Open chat** link to chat in llama.cpp's native browser interface. The job keeps running after you close the launcher or browser.
+Run GGUF models in a persistent Slurm GPU job. PBS Pro / OpenPBS is also supported. Use the terminal launcher on your cluster login node to install or register models, choose resources, and start a job. Open its **Open chat** link to chat in llama.cpp's native browser interface. The job keeps running after you close the launcher or browser.
 
 The browser service runs inside the GPU job. There is no separate launch dashboard or CPU allocation. The original terminal-chat version is preserved on [`tui`](https://github.com/CubeJerry/hpc-llama/tree/tui) at commit [`c99048d`](https://github.com/CubeJerry/hpc-llama/commit/c99048d30e8ccb1c18f6d455bba9644f5ce380c2).
 
@@ -11,11 +11,11 @@ Run these commands on a **Linux x86_64 login node**. Keep the application folder
 ```bash
 git clone https://github.com/CubeJerry/hpc-llama.git
 cd hpc-llama
-bash install.sh --profile generic
+bash install.sh --profile slurm
 ./hpc-llm --check
 ```
 
-For WEHI Milton, use `bash install.sh --profile wehi`. For PBS Pro / OpenPBS, start with `--profile pbs`. You can choose another profile later in **Site setup…**.
+`slurm` is the default for new installations. Set your cluster's partition, GPU resources and connection route in **Site setup…**. The optional `--profile wehi` example supplies WEHI Milton presets; PBS users can choose `--profile pbs`. The previous `generic` profile remains available for existing configurations.
 
 The installer supplies private Python, application libraries, pinned llama.cpp build b11351, and CUDA user-space libraries. It needs Bash, `curl`, `tar`, `sha256sum`, network access for downloads, and scheduler clients. CUDA requires glibc 2.28 or later and a compatible NVIDIA driver on compute nodes. It does not install the kernel driver or download model weights. Keep the installation at the same path; rerun the installer after moving it. Use `--backend cpu` for the CPU runtime. `./hpc-llm --demo` runs the simulated legacy terminal backend without a scheduler or model.
 
@@ -39,19 +39,19 @@ bash install.sh
 ./hpc-llm
 ```
 
-The source ZIP excludes state, credentials, environments and model weights. Updating preserves those existing directories. Do not replace your saved configuration with an example during an update. Already-running jobs retain their loaded code; restart them to use this release.
+The source ZIP excludes state, credentials, environments and model weights. Updating preserves those existing directories and your selected profile. Supply `--profile slurm` when updating to switch profiles explicitly. Do not replace your saved configuration with an example during an update. Already-running jobs retain their loaded code; restart them to use this release.
 
 ## Configure a cluster
 
 The versioned configuration is `state/config.yaml` by default. The installer creates it, or migrates existing JSON settings on first use. Open **Site setup…** to edit the scheduler, partition or queue, GPU label, account, defaults and named resource presets. Routine launch changes do not require editing YAML.
 
-This is a minimal generic configuration for a site with an approved Open OnDemand compute route:
+This is a minimal Slurm configuration using SSH through a cluster login host:
 
 ```yaml
 schema_version: 1
-selected_profile: generic
+selected_profile: slurm
 profiles:
-  generic:
+  slurm:
     scheduler: slurm
     resources:
       partition: gpu
@@ -64,14 +64,15 @@ profiles:
     workspaces:
       - /absolute/path/to/your/workspace
     connection:
-      mode: ood
-      ood_origin: https://ondemand.example.edu
-      ood_path: /rnode/{node}/{port}
+      mode: local-forward
+      ssh_host: "{node}"
+      jump_host: my-cluster-login
+      local_port: 8765
 ```
 
-Replace the partition, GPU label, paths and OOD origin with your site's values. Create your workspace on shared cluster storage. Keep it separate from application state and credentials. Partition and GPU names are free text, not a list of WEHI resources. This release supports **one GPU on one node**; other GPU counts are rejected before submission. `memory_gb` requests host RAM, not GPU VRAM.
+Replace the partition, GPU label, paths and SSH login alias with your site's values. Choose OOD or reverse SSH if your site requires a different connection route. Create your workspace on shared cluster storage. Keep it separate from application state and credentials. Partition and GPU names accept your cluster's labels. This release supports **one GPU on one node**; other GPU counts are rejected before submission. `memory_gb` requests host RAM, not GPU VRAM.
 
-See [configuration and precedence](docs/configuration.md), [generic example](examples/config.generic.yaml), and [WEHI example](examples/config.wehi.yaml) for presets, paths, runtime environment, tool limits and connection options. Keep passwords, private keys and tokens out of YAML. Select another config with `./hpc-llm --config /absolute/path/config.yaml`.
+See [configuration and precedence](docs/configuration.md), [Slurm example](examples/config.slurm.yaml), and [WEHI example](examples/config.wehi.yaml) for presets, paths, runtime environment, tool limits and connection options. Keep passwords, private keys and tokens out of YAML. Select another config with `./hpc-llm --config /absolute/path/config.yaml`.
 
 On WEHI Milton, select the `wehi` profile, set the partition and GPU resources available to your account, and copy the HTTPS origin from your working OOD page, without its path. The working route is the compute-node reverse proxy. It does not need compute-to-login SSH. Site access and partition permissions still apply.
 

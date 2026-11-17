@@ -15,6 +15,50 @@ from hpc_llm.schedulers import PBSScheduler, SlurmScheduler
 APP = Path(__file__).resolve().parents[1]
 
 class ConfigChecks(unittest.TestCase):
+    def test_new_install_defaults_to_slurm(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'HPC_LLM_CONFIG': ''}):
+            root = Path(folder)
+            store = ProfileStore(root, APP)
+            profile = store.configure_install(cache=root / 'cache')
+            self.assertEqual((profile.name, profile.scheduler, profile.resources.partition), ('slurm', 'slurm', 'gpu'))
+            self.assertEqual(profile.connection.mode, 'local-forward')
+            self.assertEqual(store.document().selected_profile, 'slurm')
+            self.assertEqual(store.document().profiles['wehi'].scheduler, 'slurm')
+            self.assertEqual(store.document().profiles['wehi'].resources.partition, 'gpuq')
+
+    def test_upgrade_preserves_selection_and_offers_slurm(self):
+        for name in ('generic', 'wehi', 'custom'):
+            with self.subTest(profile=name), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                path = root / 'config.yaml'
+                saved = SiteProfile(name=name, resources=ResourceRequest(partition='my-queue'), workspaces=[str(root / 'work')])
+                save_config(path, AppConfig(selected_profile=name, model_cache=str(root / 'cache'), profiles={name: saved}))
+                store = ProfileStore(root, APP, path)
+                before = path.read_bytes()
+                self.assertIn('slurm', [profile.name for profile in store.list()])
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(store.configure_install().name, name)
+                selected = store.configure_install(profile='slurm')
+                self.assertEqual((selected.name, selected.scheduler), ('slurm', 'slurm'))
+                document = load_config(path)
+                self.assertEqual(document.selected_profile, 'slurm')
+                self.assertEqual(document.profiles[name], saved)
+                self.assertEqual(document.model_cache, str(root / 'cache'))
+                custom = document.profiles['slurm'].model_copy(deep=True)
+                custom.resources.partition = 'custom-slurm-queue'
+                custom.workspaces = [str(root / 'selected-workspace')]
+                store.save(custom)
+                self.assertEqual(store.configure_install(profile='slurm').resources.partition, 'custom-slurm-queue')
+                self.assertEqual(store.document().profiles['slurm'], custom)
+
+    def test_old_implicit_generic_config_remains_readable(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'config.yaml'
+            path.write_text('schema_version: 1\nprofiles:\n  generic:\n    resources:\n      partition: saved-queue\n')
+            config = load_config(path)
+            self.assertEqual(config.selected_profile, 'generic')
+            self.assertEqual(config.profiles['generic'].resources.partition, 'saved-queue')
+
     def test_examples_and_no_evaluation(self):
         for path in (APP / 'examples').glob('config.*.yaml'):
             self.assertEqual(load_config(path).schema_version, 1)
@@ -75,11 +119,11 @@ class ConfigChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             config = root / 'custom.yaml'
-            save_config(config, AppConfig(profiles={'generic': SiteProfile()}))
+            save_config(config, AppConfig(profiles={'slurm': SiteProfile()}))
             with patch.dict(os.environ, {'HPC_LLM_CONFIG': str(config)}):
                 store = ProfileStore(root / 'state', APP)
                 self.assertEqual(store.config_path, config)
-                self.assertEqual(store.config()['profile'], 'generic')
+                self.assertEqual(store.config()['profile'], 'slurm')
             state = root / 'legacy'
             state.mkdir()
             old = '{"profile":3}'

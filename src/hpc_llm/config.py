@@ -28,7 +28,7 @@ def validation_error(exc: ValidationError, label: str = "configuration") -> AppE
 
 class AppConfig(Record):
     schema_version: Literal[1] = 1
-    selected_profile: str = "generic"
+    selected_profile: str = "slurm"
     model_cache: str = ""
     state_directory: str = ""
     profiles: dict[str, SiteProfile] = Field(default_factory=dict)
@@ -85,6 +85,9 @@ def load_config(path: Path) -> AppConfig:
     # include them for backwards-compatible SiteProfile exports.
     if isinstance(data.get("profiles"), dict):
         data["profiles"] = {name: dict(value, name=value.get("name", name)) if isinstance(value, dict) else value for name, value in data["profiles"].items()}
+        # Older hand-written files could omit the former generic default.
+        if "selected_profile" not in data and "slurm" not in data["profiles"] and "generic" in data["profiles"]:
+            data["selected_profile"] = "generic"
     if "schema_version" not in data:
         raise AppError("validation", "Set schema_version: 1 in config.yaml")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
