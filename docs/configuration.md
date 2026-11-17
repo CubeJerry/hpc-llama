@@ -25,14 +25,16 @@ CLI launch overrides stay visible in the launcher and take priority over its fie
 ```bash
 ./hpc-llm --config /absolute/path/config.yaml profiles show
 ./hpc-llm profiles list
-./hpc-llm profiles use wehi
+./hpc-llm profiles use slurm
 ./hpc-llm profiles cache /absolute/shared/model-cache
 ./hpc-llm launch --preset short --partition gpu-general --walltime 00:45:00
 ```
 
 ## Schema version 1
 
-Start from [the generic example](../examples/config.generic.yaml) or [the WEHI example](../examples/config.wehi.yaml). The generic example uses local SSH forwarding; the README's minimal example uses OOD. Choose the route supported by your site.
+Start from [the Slurm example](../examples/config.slurm.yaml). New installations select `slurm`, which uses local SSH forwarding until you choose another route. Set the partition, GPU label and SSH hosts for your cluster. The optional [WEHI example](../examples/config.wehi.yaml) supplies Milton settings and uses OOD; `wehi` runs through the same Slurm scheduler as `slurm`.
+
+Running `bash install.sh` on an existing installation keeps its selected profile and custom settings. Use `bash install.sh --profile slurm` or `./hpc-llm profiles use slurm` to switch. Bundled profiles remain selectable even if an older YAML file does not contain them yet; selecting one saves it to YAML. Existing YAML entries take precedence over bundled templates. The previous `generic` profile remains supported.
 
 | Top-level field | Meaning |
 |---|---|

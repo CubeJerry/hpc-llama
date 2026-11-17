@@ -1,12 +1,12 @@
 # Copy to state/config.yaml or use --config /absolute/config.yaml.
 # Keep credentials in private SSH/runtime state, never in this file.
 schema_version: 1
-selected_profile: my-cluster
+selected_profile: slurm
 state_directory: "" # Empty preserves the existing --state-root.
 model_cache: ~/scratch/llama_cache
 profiles:
-  my-cluster:
-    description: Generic Slurm example; replace the queue and SSH alias.
+  slurm:
+    description: Slurm example; replace the queue and SSH alias.
     scheduler: slurm
     runtime: "" # Empty selects the managed llama-server executable.
     modules: [] # Literal names, e.g. [cuda/12.4]; never shell commands.

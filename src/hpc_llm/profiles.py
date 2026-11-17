@@ -48,7 +48,7 @@ class ProfileStore:
             raise AppError('validation', f'{path.name} must contain a JSON object.')
         return data
 
-    def document(self, default_profile: str = 'generic') -> AppConfig:
+    def document(self, default_profile: str = 'slurm') -> AppConfig:
         if self.config_path.exists() or self.config_path.is_symlink():
             return load_config(self.config_path)
         return self._migrate(default_profile)
@@ -73,7 +73,7 @@ class ProfileStore:
                 names.update(self._name(path.stem) for path in directory.glob('*.json'))
         profiles = {name: self._legacy_raw(name) for name in sorted(names)}
         if not profiles:
-            profiles['generic'] = SiteProfile()
+            profiles['slurm'] = SiteProfile()
         selected = legacy.get('profile', default_profile)
         if selected not in profiles:
             raise AppError('validation', 'The selected legacy profile is missing; restore its JSON file before migration.')
@@ -159,12 +159,21 @@ class ProfileStore:
             return self._parse(self._read(path) if path.suffix == '.json' else read_mapping(path))
         name = self._name(selector)
         profile = self.document().profiles.get(name)
+        if profile is None and (self.bundled / f'{name}.json').exists():
+            # Offer new bundled templates to existing YAML installations.
+            # Saved YAML wins; retired legacy JSON overrides stay ignored.
+            profile = self._parse(self._read(self.bundled / f'{name}.json'), name)
         if profile is None:
             raise AppError('validation', f'Unknown site profile: {name}. Choose a configured profile or import a profile file.')
         return profile.model_copy(deep=True)
 
     def list(self) -> list[SiteProfile]:
-        return [profile.model_copy(deep=True) for _, profile in sorted(self.document().profiles.items())]
+        profiles = dict(self.document().profiles)
+        for path in self.bundled.glob('*.json'):
+            name = self._name(path.stem)
+            if name not in profiles:
+                profiles[name] = self._parse(self._read(path), name)
+        return [profile.model_copy(deep=True) for _, profile in sorted(profiles.items())]
 
     def _cache(self, value: str) -> Path:
         path = self._path(value)
@@ -178,7 +187,7 @@ class ProfileStore:
 
     def load(self, name_or_path: str | Path | None = None) -> SiteProfile:
         config = self.config()
-        profile = self._raw(name_or_path or config.get('profile', 'generic'))
+        profile = self._raw(name_or_path or config.get('profile', 'slurm'))
         return self._effective(profile, config)
 
     def _effective(self, profile: SiteProfile, config: dict) -> SiteProfile:
@@ -222,7 +231,7 @@ class ProfileStore:
         raw = self._raw(profile or document.selected_profile)
         return self.save(raw, select=True, model_cache=cache)
 
-    def initialize(self, default_profile: str = 'generic') -> SiteProfile:
+    def initialize(self, default_profile: str = 'slurm') -> SiteProfile:
         """Installer entry point: preserve existing selection and cache settings."""
         self.document(default_profile)
         return self.load()

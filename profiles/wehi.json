@@ -4,7 +4,7 @@
   "runtime": "",
   "model_cache": "/vast/scratch/users/$USER/llama_cache",
   "name": "wehi",
-  "description": "WEHI Slurm GPU allocation. Edit partition, account, GPU type and time to match your access; bundled presets are editable starting points.",
+  "description": "WEHI Milton example for Slurm. Edit partition, account, GPU type and time to match your access; bundled presets are editable starting points.",
   "scheduler": "slurm",
   "resources": {
     "partition": "gpuq",

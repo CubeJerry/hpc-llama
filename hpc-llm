@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 APP_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
-  echo 'Run bash install.sh --profile generic first, or choose your site profile (for example wehi).' >&2
+  echo 'Run bash install.sh --profile slurm first, or choose a site example such as --profile wehi.' >&2
   exit 1
 fi
 export HPC_LLM_HOME="${HPC_LLM_HOME:-$APP_DIR/state}"

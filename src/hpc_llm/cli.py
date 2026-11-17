@@ -70,7 +70,7 @@ def parse_args(argv=None):
     show = ps.add_parser("show"); show.add_argument("name", nargs="?")
     use = ps.add_parser("use"); use.add_argument("name")
     cache = ps.add_parser("cache"); cache.add_argument("path")
-    create = ps.add_parser("create"); create.add_argument("name"); create.add_argument("--base", default="generic")
+    create = ps.add_parser("create"); create.add_argument("name"); create.add_argument("--base", default="slurm")
     create.add_argument("--scheduler", choices=["slurm", "pbs"])
     create.add_argument("--pbs-gpu-resource"); create.add_argument("--pbs-gpu-type-resource")
     preset = ps.add_parser("preset"); preset.add_argument("profile"); preset.add_argument("name")
@@ -101,7 +101,7 @@ def profiles_command(args, root):
     store = ProfileStore(root, APP_ROOT)
     action = args.profile_action
     if action in (None, "list"):
-        active = store.config().get("profile", "generic")
+        active = store.config().get("profile", "slurm")
         for profile in store.list():
             display(f"{'*' if profile.name == active else ' '} {profile.name} ({profile.scheduler}) — {profile.description}")
         return 0

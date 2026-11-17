@@ -133,7 +133,7 @@ class ToolConfig(Record):
 
 
 class SiteProfile(Record):
-    name: str = "generic"
+    name: str = "slurm"
     description: str = ""
     scheduler: Literal["slurm", "pbs"] = "slurm"
     resource_presets: dict[str, ResourceRequest] = Field(default_factory=dict)
