@@ -107,14 +107,6 @@ For a manually registered model, supply its original `OWNER/REPOSITORY` as the s
 
 Set context size and **MTP acceleration** before launch. **Auto** uses MTP when the model and runtime support it. **Embedded MTP** selects a model's embedded head. **Registered MTP sidecar** uses the registered companion and reports missing requirements. A downloaded or registered file is not proof that the runtime can load it. MTP can require more VRAM and does not guarantee faster generation.
 
-For the requested Qwen3.8 Q4_K_P main model, BF16 projector and FastMTP sidecar bundle:
-
-```bash
-bash scripts/install-qwen38-q4kp.sh --dry-run
-bash scripts/install-qwen38-q4kp.sh
-```
-
-The pinned bundle totals about 19.76 GB. Its separate reduced-vocabulary FastMTP sidecar requires the [publisher's patched runtime](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF#run-hauhaucs-fastmtp). Installing it does not patch the managed runtime. Auto uses the main model's verified embedded MTP head when supported.
 
 ## Launch, reconnect and stop
 
